@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 ICM-20948 Quaternion Orientation Visualizer
-Receives Teleplot UDP packets on port 47269 and renders a real-time 3D box.
+Receives UDP packets on port 5006 and renders a real-time 3D box.
 
 Dependencies:
     pip install pygame PyOpenGL
 """
 
 import math
-import re
 import socket
 import threading
 import time
@@ -69,7 +68,7 @@ from pygame.locals import (
 # Configuration
 # ---------------------------------------------------------------------------
 UDP_IP = "0.0.0.0"
-UDP_PORT = 47269
+UDP_PORT = 5006
 _WIN_W    = 900
 _WIN_3D_H = 600
 _PANEL_H  = 200
@@ -80,60 +79,65 @@ STALE_TIMEOUT = 2.0   # seconds before "no signal" state
 # ---------------------------------------------------------------------------
 # Shared state
 # ---------------------------------------------------------------------------
-_quat = [1.0, 0.0, 0.0, 0.0]   # w, x, y, z  (raw from sensor)
-_quat_ref = [1.0, 0.0, 0.0, 0.0]  # reference offset (conjugate applied before render)
-_accel = [0.0, 0.0, 0.0]          # raw accel X/Y/Z in g
-_gyro  = [0.0, 0.0, 0.0]          # angular velocity X/Y/Z in deg/s
-_quat_lock = threading.Lock()
-_last_packet_time = 0.0
+class ControllerState:
+    def __init__(self, controller_id):
+        self.id = controller_id
+        self.quat = [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
+        self.accel = [0.0, 0.0, 0.0]
+        self.gyro = [0.0, 0.0, 0.0]
+        self.last_packet_time = 0.0
+        self.quat_ref = [1.0, 0.0, 0.0, 0.0]
+
+_controllers = {}  # controller_id -> ControllerState
+_active_controller_id = -1
+_state_lock = threading.Lock()
 _running = True
 _font_panel = None   # initialised in main() after pygame.init()
 
 # ---------------------------------------------------------------------------
 # UDP listener thread
 # ---------------------------------------------------------------------------
-_PACKET_RE = re.compile(r"(\w+):([-\d.eE+]+)\|")
+import struct
+
+# ... existing code ...
+
+# ---------------------------------------------------------------------------
+# UDP listener thread
+# ---------------------------------------------------------------------------
+_PACKET_FORMAT = '<BIffffffffff'
+_PACKET_SIZE = struct.calcsize(_PACKET_FORMAT)
 
 
 def _udp_listener():
-    global _last_packet_time
+    global _active_controller_id
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((UDP_IP, UDP_PORT))
     sock.settimeout(0.1)
     while _running:
         try:
-            raw, _ = sock.recvfrom(512)
-            text = raw.decode("utf-8", errors="ignore")
-            vals = {m.group(1): float(m.group(2)) for m in _PACKET_RE.finditer(text)}
-            w = vals.get("quat_w")
-            x = vals.get("quat_x")
-            y = vals.get("quat_y")
-            z = vals.get("quat_z")
-            if None not in (w, x, y, z):
-                with _quat_lock:
-                    _quat[0] = w
-                    _quat[1] = x
-                    _quat[2] = y
-                    _quat[3] = z
-                    ax = vals.get("accel_x")
-                    ay = vals.get("accel_y")
-                    az = vals.get("accel_z")
-                    if None not in (ax, ay, az):
-                        _accel[0] = ax
-                        _accel[1] = ay
-                        _accel[2] = az
-                    gx = vals.get("gyro_x")
-                    gy = vals.get("gyro_y")
-                    gz = vals.get("gyro_z")
-                    if None not in (gx, gy, gz):
-                        _gyro[0] = gx
-                        _gyro[1] = gy
-                        _gyro[2] = gz
-                _last_packet_time = time.monotonic()
+            raw, _ = sock.recvfrom(_PACKET_SIZE)
+            if len(raw) != _PACKET_SIZE:
+                continue
+
+            cid, ts, qw, qx, qy, qz, ax, ay, az, gx, gy, gz = struct.unpack(_PACKET_FORMAT, raw)
+
+            with _state_lock:
+                if cid not in _controllers:
+                    _controllers[cid] = ControllerState(cid)
+                    if _active_controller_id == -1:
+                        _active_controller_id = cid
+                
+                state = _controllers[cid]
+                state.quat = [qw, qx, qy, qz]
+                state.accel = [ax, ay, az]
+                state.gyro = [gx, gy, gz]
+                state.last_packet_time = time.monotonic()
+
         except socket.timeout:
             pass
-        except Exception:
+        except Exception as e:
+            print(f"UDP listener error: {e}")
             pass
     sock.close()
 
@@ -158,10 +162,10 @@ def _quat_conjugate(w, x, y, z):
     return (w, -x, -y, -z)
 
 
-def _apply_offset(raw_w, raw_x, raw_y, raw_z):
+def _apply_offset(state: ControllerState):
     """Remove the reference orientation so the zeroed pose reads as identity."""
-    ref_inv = _quat_conjugate(*_quat_ref)
-    return _quat_mul(ref_inv, (raw_w, raw_x, raw_y, raw_z))
+    ref_inv = _quat_conjugate(*state.quat_ref)
+    return _quat_mul(ref_inv, state.quat)
 
 
 def _sensor_to_gl(w, x, y, z):
@@ -489,148 +493,156 @@ def _draw_panel(win_w: int, amag_hist, wmag_hist):
 # ---------------------------------------------------------------------------
 # HUD via pygame surface -> window title  (zero-cost approach)
 # ---------------------------------------------------------------------------
-def _update_title(w, x, y, z, fps: float, stale: bool, zeroed: bool):
+def _update_title(state: ControllerState, fps: float, stale: bool, zeroed: bool):
     status = "NO SIGNAL" if stale else f"FPS {fps:4.0f}"
     offset_tag = "  [SPACE: zero]" if not zeroed else "  [SPACE: reset zero]"
-    with _quat_lock:
-        ax, ay, az = _accel[0], _accel[1], _accel[2]
-        gx, gy, gz = _gyro[0], _gyro[1], _gyro[2]
+    controller_tag = f"  [TAB: switch]  ID: {state.id}"
+    
+    ax, ay, az = state.accel
+    gx, gy, gz = state.gyro
     amag = math.sqrt(ax*ax + ay*ay + az*az)
     wmag = math.sqrt(gx*gx + gy*gy + gz*gz)
     accel_tag = f"  |a|={amag:.2f}g"
-    gyro_tag  = f"  |ω|={wmag:.0f}°/s"
+    gyro_tag = f"  |ω|={wmag:.0f}°/s"
+    
     pygame.display.set_caption(
-        f"ICM-20948 Visualizer  |  {status}{offset_tag}  [LMB:orbit scroll:zoom TAB:panel]{accel_tag}{gyro_tag}  |  "
-        f"w={w:+.3f}  x={x:+.3f}  y={y:+.3f}  z={z:+.3f}"
+        f"Handheld MIDI Controller Visualiser | {status}{controller_tag}{offset_tag}{accel_tag}{gyro_tag}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Main loop
 # ---------------------------------------------------------------------------
 def main():
-    global _running
+    global _running, _font_panel, _active_controller_id
 
     pygame.init()
-    pygame.font.init()
-    global _font_panel
-    _font_panel = pygame.font.SysFont("monospace", 14)
     pygame.display.set_mode(WINDOW_SIZE, DOUBLEBUF | OPENGL)
-    pygame.display.set_caption("ICM-20948 Visualizer  |  Waiting for data…")
-
-    glMatrixMode(GL_PROJECTION)
-    gluPerspective(45.0, _WIN_W / _WIN_3D_H, 0.1, 100.0)
-    glMatrixMode(GL_MODELVIEW)
-    glEnable(GL_DEPTH_TEST)
-    glClearColor(0.08, 0.08, 0.12, 1.0)
-
-    listener = threading.Thread(target=_udp_listener, daemon=True)
-    listener.start()
-
+    _font_panel = pygame.font.Font(None, 18)
     clock = pygame.time.Clock()
-    _identity = [1.0, 0.0, 0.0, 0.0]
 
-    panel_open = False
-    amag_hist  = deque(maxlen=500)   # |a| history  (~8 s at 60 fps)
-    wmag_hist  = deque(maxlen=500)   # |ω| history
+    listener_thread = threading.Thread(target=_udp_listener, daemon=True)
+    listener_thread.start()
 
-    # Turntable orbit camera (spherical coordinates around origin)
-    cam_azimuth   =  math.radians(30)   # horizontal angle, + = rotate right
-    cam_elevation =  math.radians(20)   # vertical angle,   + = look from above
-    cam_dist      = 10.0
-    mouse_dragging = False
-    mouse_prev     = (0, 0)
-    ORBIT_SPEED    = 0.007              # rad per pixel
-    ZOOM_FACTOR    = 0.9                # cam_dist multiplier per scroll tick
+    cam_radius = 8.0
+    cam_angle_x = 65.0
+    cam_angle_y = -45.0
+    mouse_down = False
+    last_mouse_pos = None
 
-    while True:
+    # History for panel graphs
+    accel_mag_hist = deque(maxlen=_WIN_W // 2 - 20)
+    gyro_mag_hist = deque(maxlen=_WIN_W // 2 - 20)
+
+    while _running:
+        # --- Event handling ---
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 _running = False
-                pygame.quit()
-                return
-            if event.type == KEYDOWN and event.key == K_SPACE:
-                with _quat_lock:
-                    if _quat_ref == [_quat[0], _quat[1], _quat[2], _quat[3]]:
-                        _quat_ref[:] = _identity
-                    else:
-                        _quat_ref[:] = [_quat[0], _quat[1], _quat[2], _quat[3]]
-            elif event.type == KEYDOWN and event.key == K_TAB:
-                panel_open = not panel_open
-                new_h = _WIN_3D_H + (_PANEL_H if panel_open else 0)
-                pygame.display.set_mode((_WIN_W, new_h), DOUBLEBUF | OPENGL)
-                glEnable(GL_DEPTH_TEST)
-                glClearColor(0.08, 0.08, 0.12, 1.0)
-                glMatrixMode(GL_PROJECTION)
-                glLoadIdentity()
-                gluPerspective(45.0, _WIN_W / _WIN_3D_H, 0.1, 100.0)
-                glMatrixMode(GL_MODELVIEW)
+            elif event.type == KEYDOWN:
+                if event.key == K_SPACE:
+                    with _state_lock:
+                        if _active_controller_id in _controllers:
+                            state = _controllers[_active_controller_id]
+                            # If already zeroed, reset. Otherwise, set new zero.
+                            if state.quat_ref != [1.0, 0.0, 0.0, 0.0]:
+                                state.quat_ref = [1.0, 0.0, 0.0, 0.0]
+                            else:
+                                state.quat_ref = list(state.quat)
+                elif event.key == K_TAB:
+                    with _state_lock:
+                        if len(_controllers) > 1:
+                            ids = sorted(_controllers.keys())
+                            try:
+                                current_idx = ids.index(_active_controller_id)
+                                next_idx = (current_idx + 1) % len(ids)
+                                _active_controller_id = ids[next_idx]
+                            except ValueError:
+                                if ids: _active_controller_id = ids[0]
 
-            elif event.type == MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    mouse_dragging = True
-                    mouse_prev = event.pos
-                elif event.button == 4:        # scroll up   — zoom in
-                    cam_dist = max(2.0, cam_dist * ZOOM_FACTOR)
-                elif event.button == 5:        # scroll down — zoom out
-                    cam_dist = min(50.0, cam_dist / ZOOM_FACTOR)
+            # Camera rotation
+            elif event.type == MOUSEBUTTONDOWN and event.button == 1:
+                mouse_down = True
+                last_mouse_pos = event.pos
+            elif event.type == MOUSEBUTTONUP and event.button == 1:
+                mouse_down = False
+            elif event.type == MOUSEMOTION and mouse_down:
+                dx, dy = event.pos[0] - last_mouse_pos[0], event.pos[1] - last_mouse_pos[1]
+                cam_angle_y += dx * 0.25
+                cam_angle_x = max(-89, min(89, cam_angle_x - dy * 0.25))
+                last_mouse_pos = event.pos
+            # Camera zoom
+            elif event.type == MOUSEBUTTONDOWN and event.button == 4: # scroll up
+                cam_radius = max(2.0, cam_radius * 0.9)
+            elif event.type == MOUSEBUTTONDOWN and event.button == 5: # scroll down
+                cam_radius = min(25.0, cam_radius * 1.1)
 
-            elif event.type == MOUSEBUTTONUP:
-                if event.button == 1:
-                    mouse_dragging = False
+        # --- Get current state ---
+        state = None
+        with _state_lock:
+            if _active_controller_id in _controllers:
+                state = _controllers[_active_controller_id]
 
-            elif event.type == MOUSEMOTION and mouse_dragging:
-                dx = event.pos[0] - mouse_prev[0]
-                dy = event.pos[1] - mouse_prev[1]
-                mouse_prev = event.pos
-                cam_azimuth   -= dx * ORBIT_SPEED
-                cam_elevation -= dy * ORBIT_SPEED
-                # Clamp elevation so the scene never flips upside-down
-                cam_elevation = max(math.radians(-89), min(math.radians(89), cam_elevation))
+        if state is None:
+            glClearColor(0.0, 0.0, 0.0, 1.0)
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            _draw_text(_font_panel, "Waiting for controller data on UDP port 5006...", 20, WINDOW_SIZE[1] / 2, (1,1,1))
+            pygame.display.flip()
+            clock.tick(10)
+            continue
 
+        is_stale = (time.monotonic() - state.last_packet_time) > STALE_TIMEOUT
+        is_zeroed = state.quat_ref != [1.0, 0.0, 0.0, 0.0]
+
+        # --- Update graphs ---
+        ax, ay, az = state.accel
+        gx, gy, gz = state.gyro
+        accel_mag_hist.append(math.sqrt(ax*ax + ay*ay + az*az))
+        gyro_mag_hist.append(math.sqrt(gx*gx + gy*gy + gz*gz))
+
+        # --- 3D Scene Rendering ---
+        glViewport(0, _PANEL_H, _WIN_W, _WIN_3D_H)
+        glClearColor(0.1, 0.12, 0.18, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        glViewport(0, _PANEL_H if panel_open else 0, _WIN_W, _WIN_3D_H)
-        glLoadIdentity()
+        glEnable(GL_DEPTH_TEST)
 
-        # Compute camera position from spherical coordinates
-        cx = cam_dist * math.cos(cam_elevation) * math.sin(cam_azimuth)
-        cy = cam_dist * math.sin(cam_elevation)
-        cz = cam_dist * math.cos(cam_elevation) * math.cos(cam_azimuth)
-        gluLookAt(cx, cy, cz,  0, 0, 0,  0, 1, 0)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(45, (WINDOW_SIZE[0] / (_WIN_3D_H)), 0.1, 50.0)
+
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        
+        # Camera position
+        eye_x = cam_radius * math.cos(math.radians(cam_angle_y)) * math.cos(math.radians(cam_angle_x))
+        eye_y = cam_radius * math.sin(math.radians(cam_angle_x))
+        eye_z = cam_radius * math.sin(math.radians(cam_angle_y)) * math.cos(math.radians(cam_angle_x))
+        gluLookAt(eye_x, eye_y, eye_z, 0, 0, 0, 0, 1, 0)
 
         _draw_grid()
         _draw_axes()
 
-        with _quat_lock:
-            raw_w, raw_x, raw_y, raw_z = _quat[0], _quat[1], _quat[2], _quat[3]
-            raw_ax, raw_ay, raw_az = _accel[0], _accel[1], _accel[2]
-            raw_gx, raw_gy, raw_gz = _gyro[0], _gyro[1], _gyro[2]
-
-        stale = (time.monotonic() - _last_packet_time) > STALE_TIMEOUT
-        zeroed = (_quat_ref != _identity)
-
-        # Convert from sensor body frame to OpenGL world frame, then remove offset
-        w, x, y, z = _sensor_to_gl(*_apply_offset(raw_w, raw_x, raw_y, raw_z))
-
+        # Apply rotation from quaternion
         glPushMatrix()
-        glMultMatrixf(_quat_to_gl_matrix(w, x, y, z))
-        _draw_box(stale)
-        _draw_accel_vector(raw_ax, raw_ay, raw_az)
-        _draw_gyro_vector(raw_gx, raw_gy, raw_gz)
+        q_offset = _apply_offset(state)
+        q_gl = _sensor_to_gl(*q_offset)
+        glMultMatrixf(_quat_to_gl_matrix(*q_gl))
+
+        _draw_box(is_stale)
+        if not is_stale:
+            _draw_accel_vector(*state.accel)
+            _draw_gyro_vector(*state.gyro)
         glPopMatrix()
 
-        # Append magnitude samples to graph history every rendered frame
-        amag_hist.append(math.sqrt(raw_ax**2 + raw_ay**2 + raw_az**2))
-        wmag_hist.append(math.sqrt(raw_gx**2 + raw_gy**2 + raw_gz**2))
+        # --- 2D Panel Rendering ---
+        _draw_panel(_WIN_W, accel_mag_hist, gyro_mag_hist)
 
-        if panel_open:
-            _draw_panel(_WIN_W, amag_hist, wmag_hist)
-
-        fps = clock.get_fps()
-        _update_title(w, x, y, z, fps, stale, zeroed)
-
+        # --- Update title and flip buffer ---
+        _update_title(state, clock.get_fps(), is_stale, is_zeroed)
         pygame.display.flip()
         clock.tick(TARGET_FPS)
+
+    pygame.quit()
 
 
 if __name__ == "__main__":

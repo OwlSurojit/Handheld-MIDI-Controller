@@ -1,0 +1,8 @@
+python-rtmidi
+PyYAML
+numpy
+OneEuroFilter
+PyQt5
+psutil
+pygame 
+PyOpenGL

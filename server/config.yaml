@@ -1,0 +1,55 @@
+# Network
+network:
+  udp_port: 5005
+  visualiser_forward_port: 5006       # null to disable forwarding
+  midi_port_name: "Handheld MIDI Controller"
+  midi_backend: auto                  # auto | jack | alsa | coremidi | winmm
+
+# Controllers
+controllers:
+  auto_assign: true
+  known:
+    "192.168.1.50": { id: 0, channel: 1, name: "Player 1" }
+
+# Scale and zones
+scale:
+  scale: pentatonic_major
+  root_note: 60                       # C4
+yaw_zone_hysteresis: 3              # degrees deadband at zone boundaries
+
+# MIDI Mappings
+mappings:
+  volume:
+    source: euler_pitch
+    type: cc
+    cc_number: 7
+    range: [-60, 60]
+    filter: { min_cutoff: 2.0, beta: 0.02 }
+  filter_cutoff:
+    source: euler_roll
+    type: cc
+    cc_number: 74
+    range: [-45, 45]
+    filter: { min_cutoff: 1.5, beta: 0.01 }
+  expression:
+    source: gyro_mag
+    type: cc
+    cc_number: 11
+    range: [0, 500]
+    filter: { min_cutoff: 3.0, beta: 0.05 }
+  breath:
+    source: accel_mag
+    type: cc
+    cc_number: 2
+    range: [0, 4]
+    filter: { min_cutoff: 3.0, beta: 0.05 }
+
+# Hit detection thresholds
+hit_detector:
+  gyro_onset_threshold: 150         # °/s
+  accel_confirm_threshold: 1.5      # g
+  velocity_gyro_weight: 0.6         # α: gyro vs accel contribution
+  velocity_min: 20
+  velocity_max: 127
+  refractory_ms: 250
+  note_duration_ms: 100

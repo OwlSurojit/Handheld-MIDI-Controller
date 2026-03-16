@@ -43,11 +43,21 @@
 // Wi-Fi and UDP settings
 const char *WIFI_SSID = "YY"; //"Why?-Fi"; //
 const char *WIFI_PASS = "YE#n11sney"; // "Wh3r3for3?"; //
-IPAddress UDP_REMOTE_IP(192, 168, 1, 37); // 117); // Receiver IP on your LAN
-const uint16_t UDP_REMOTE_PORT = 47269;   // Receiver UDP port
-const uint16_t UDP_LOCAL_PORT = 47269;    // Local UDP port on the Pico W
+const uint8_t CONTROLLER_ID = 0;
+IPAddress UDP_REMOTE_IP(255, 255, 255, 255); // Broadcast
+const uint16_t UDP_REMOTE_PORT = 5005;   // Receiver UDP port
+const uint16_t UDP_LOCAL_PORT = 5005;    // Local UDP port on the Pico W
 
 WiFiUDP udp;
+
+// Per-controller firmware ID, timestamp, and sensor data
+struct __attribute__((packed)) Packet {
+    uint8_t id;
+    uint32_t ts;
+    float qw, qx, qy, qz;
+    float ax, ay, az;
+    float gx, gy, gz;
+};
 
 #ifdef USE_SPI
 ICM_20948_SPI myICM; // If using SPI create an ICM_20948_SPI object
@@ -64,10 +74,10 @@ void connectWiFi() {
     udp.begin(UDP_LOCAL_PORT);
 }
 
-void sendUdpMessage(const char *message) {
-    int packetBegun = udp.beginPacket(UDP_REMOTE_IP, UDP_REMOTE_PORT);
-    size_t bytes_written = udp.write((const uint8_t *)message, strlen(message));
-    int packetSent = udp.endPacket();
+void sendUdpPacket(const Packet &packet) {
+    udp.beginPacket(UDP_REMOTE_IP, UDP_REMOTE_PORT);
+    udp.write((const uint8_t *)&packet, sizeof(packet));
+    udp.endPacket();
 }
 
 void setup() {
@@ -183,6 +193,9 @@ void setup() {
     restoreBiasesFromFlash(myICM);
 }
 
+int packetCount = 0;
+unsigned long lastPrintTime = millis();
+
 void loop() {
     static bool biasesSaved = false;
     static unsigned long startTime = millis();
@@ -215,30 +228,38 @@ void loop() {
             double q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
 
             // Raw accelerometer data (FSR ±8g, 4096 LSB/g)
-            double ax = 0.0, ay = 0.0, az = 0.0;
+            float ax = 0.0, ay = 0.0, az = 0.0;
             if ((data.header & DMP_header_bitmap_Accel) > 0)
             {
-                ax = (double)data.Raw_Accel.Data.X / 4096.0;
-                ay = (double)data.Raw_Accel.Data.Y / 4096.0;
-                az = (double)data.Raw_Accel.Data.Z / 4096.0;
+                ax = (float)data.Raw_Accel.Data.X / 4096.0f;
+                ay = (float)data.Raw_Accel.Data.Y / 4096.0f;
+                az = (float)data.Raw_Accel.Data.Z / 4096.0f;
             }
 
             // Raw gyroscope data (FSR ±2000 dps, 16.384 LSB/(deg/s))
-            double gx = 0.0, gy = 0.0, gz = 0.0;
+            float gx = 0.0, gy = 0.0, gz = 0.0;
             if ((data.header & DMP_header_bitmap_Gyro) > 0)
             {
-                gx = (double)data.Raw_Gyro.Data.X / 16.384;
-                gy = (double)data.Raw_Gyro.Data.Y / 16.384;
-                gz = (double)data.Raw_Gyro.Data.Z / 16.384;
+                gx = (float)data.Raw_Gyro.Data.X / 16.4f; // 16.384 is a pain, 16.4 is close enough
+                gy = (float)data.Raw_Gyro.Data.Y / 16.4f;
+                gz = (float)data.Raw_Gyro.Data.Z / 16.4f;
             }
 
-            char payload[256];
-            snprintf(payload, sizeof(payload),
-                     "quat_w:%.6f|g\nquat_x:%.6f|g\nquat_y:%.6f|g\nquat_z:%.6f|g\n"
-                     "accel_x:%.4f|g\naccel_y:%.4f|g\naccel_z:%.4f|g\n"
-                     "gyro_x:%.2f|g\ngyro_y:%.2f|g\ngyro_z:%.2f|g\n",
-                     q0, q1, q2, q3, ax, ay, az, gx, gy, gz);
-            sendUdpMessage(payload);
+            Packet pkt = {
+                .id = CONTROLLER_ID,
+                .ts = (uint32_t)millis(),
+                .qw = (float)q0, .qx = (float)q1, .qy = (float)q2, .qz = (float)q3,
+                .ax = ax, .ay = ay, .az = az,
+                .gx = gx, .gy = gy, .gz = gz
+            };
+            sendUdpPacket(pkt);
+            packetCount++;
+            if (millis() - lastPrintTime >= 1000) {
+                Serial.print("Packets sent in the last second: ");
+                Serial.println(packetCount);
+                packetCount = 0;
+                lastPrintTime = millis();
+            }
         }
     }
 
