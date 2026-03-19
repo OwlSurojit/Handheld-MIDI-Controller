@@ -1,22 +1,28 @@
 import sys
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, 
-    QListWidget, QPushButton, QComboBox, QLabel, QFormLayout
+    QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
+    QListWidget, QListWidgetItem, QPushButton, QComboBox, QLabel, QFormLayout
 )
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, pyqtSignal
 
+from server.shared_state import controllers, register_new_controller_callback
 from server.config import get_config, load_config
 from server.scales import SCALES
+from server.ui.dialogs.visualiser_window import VisualiserWindow
+
 
 class MainWindow(QMainWindow):
-    def __init__(self, get_controllers_func):
+    new_controller_signal = pyqtSignal(int)
+
+    def __init__(self):
         super().__init__()
-        self.get_controllers = get_controllers_func
         self.setWindowTitle("Handheld MIDI Controller - Settings")
         self.setGeometry(100, 100, 500, 400)
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
+        
+        self.visualiser_windows: dict[bytes, VisualiserWindow] = {}
 
         # --- Controllers Tab ---
         self.controllers_tab = QWidget()
@@ -50,24 +56,60 @@ class MainWindow(QMainWindow):
             pass # Use default if config not loaded yet
 
         self.scale_selector.currentTextChanged.connect(self.on_scale_change)
+        
+        # Connect the signal up
+        self.new_controller_signal.connect(self.on_new_controller)
+        register_new_controller_callback(self.new_controller_signal.emit)
 
-        # Timer to update controller list
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_controller_list)
-        self.timer.start(1000) # Update every second
+        # Do an initial populate
+        self.update_controller_list()
+
+    def on_new_controller(self, state):
+        self.update_controller_list()
 
     def update_controller_list(self):
-        controllers = self.get_controllers()
         self.controller_list.clear()
         if not controllers:
             self.controller_list.addItem("No controllers detected.")
             return
 
-        for cid, state in sorted(controllers.items()):
-            self.controller_list.addItem(f"ID: {state.id}  |  IP: {state.source_ip}  |  Channel: {state.id + 1}")
+        for mac, state in sorted(controllers.items()):
+            item = QListWidgetItem(self.controller_list)
+            
+            widget = QWidget()
+            layout = QHBoxLayout()
+            layout.setContentsMargins(5, 5, 5, 5)
+            
+            info_label = QLabel(f"MAC: {state.mac}  |  IP: {state.source_ip}  |  Channel: {state.midi_channel}")
+            viz_button = QPushButton("Visualise")
+            
+            layout.addWidget(info_label)
+            layout.addStretch()
+            layout.addWidget(viz_button)
+            widget.setLayout(layout)
+            
+            viz_button.clicked.connect(lambda checked, idx=mac: self.open_visualiser(idx))
+            
+            item.setSizeHint(widget.sizeHint())
+            self.controller_list.setItemWidget(item, widget)
+
+    def open_visualiser(self, controller_id):
+        if controller_id in self.visualiser_windows:
+            try:
+                print(f"Visualiser for controller {controller_id.hex()} opening/bringing to front.")
+                self.visualiser_windows[controller_id].show()
+                self.visualiser_windows[controller_id].raise_()
+                self.visualiser_windows[controller_id].activateWindow()
+                return
+            except RuntimeError:
+                pass
+            
+        viz_win = VisualiserWindow(controller_id)
+        
+        self.visualiser_windows[controller_id] = viz_win
+        viz_win.show()
 
     def re_zero_all(self):
-        controllers = self.get_controllers()
         for state in controllers.values():
             state.re_zero()
         print("UI: Re-zero signal sent to all controllers.")
@@ -82,7 +124,7 @@ class MainWindow(QMainWindow):
         # update_config(['scale', 'scale'], new_scale)
 
 
-def launch_ui(get_controllers_func):
+def launch_ui():
     """Entry point for launching the PyQt application."""
     app = QApplication(sys.argv)
     # Ensure config is loaded before UI
@@ -91,6 +133,6 @@ def launch_ui(get_controllers_func):
     except FileNotFoundError as e:
         print(f"Could not load config for UI: {e}")
 
-    main_win = MainWindow(get_controllers_func)
+    main_win = MainWindow()
     main_win.show()
-    sys.exit(app.exec_())
+    return app.exec_()

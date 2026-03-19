@@ -1,54 +1,47 @@
 import time
+import threading
 import numpy as np
 
+from server.shared_state import controllers
 from server.controller_state import ControllerState
 from server.midi_output import MIDIOutput
 from server.config import get_config
 from server.scales import get_scale
 import server.quaternion_utils as q_utils
 
-class MidiMapper:
-    def __init__(self, midi_out: MIDIOutput):
+class MidiMapper(threading.Thread):
+    def __init__(self, midi_out: MIDIOutput, stop_event: threading.Event):
+        super().__init__()
         self.midi_out = midi_out
+        self.stop_event = stop_event
         self.config = get_config()
         self.last_cc_values = {} # (controller_id, cc_number) -> value
 
+    def run(self):
+        """The main processing loop of the server."""        
+        print("Starting processing loop...")
+        
+        while not self.stop_event.is_set():
+            active_controllers = list(controllers.values())
+            if not active_controllers:
+                time.sleep(0.01)
+                continue
+
+            for state in active_controllers:
+                self.process(state)
+            
+            # Handle note-offs in a simple way for this iteration
+            self.send_scheduled_note_offs(controllers)
+
+            # Sleep briefly to yield CPU
+            time.sleep(0.0005) # 0.5ms sleep as per plan
+
+        print("Processing loop stopped.")
+
+
     def process(self, state: ControllerState):
-        """
-        Main processing function for a single controller's state.
-        This is called on every iteration of the processing thread.
-        """
-        # 1. Pop data from the queue
-        try:
-            ts, raw_quat, raw_accel, raw_gyro = state.raw_data_queue.popleft()
-        except IndexError:
-            return # No new data
-
-        # 2. Apply One-Euro filters
-        t = time.monotonic()
-        state.quat[0] = state.filters['quat_w'](raw_quat[0], t)
-        state.quat[1] = state.filters['quat_x'](raw_quat[1], t)
-        state.quat[2] = state.filters['quat_y'](raw_quat[2], t)
-        state.quat[3] = state.filters['quat_z'](raw_quat[3], t)
-        state.quat = q_utils.quat_normalize(state.quat)
-
-        state.accel[0] = state.filters['accel_x'](raw_accel[0], t)
-        state.accel[1] = state.filters['accel_y'](raw_accel[1], t)
-        state.accel[2] = state.filters['accel_z'](raw_accel[2], t)
-
-        state.gyro[0] = state.filters['gyro_x'](raw_gyro[0], t)
-        state.gyro[1] = state.filters['gyro_y'](raw_gyro[1], t)
-        state.gyro[2] = state.filters['gyro_z'](raw_gyro[2], t)
-
-        # 3. Calculate derived values (Euler angles, magnitudes)
-        state.euler = q_utils.quat_to_euler(state.quat)
-        state.accel_mag = np.linalg.norm(state.accel)
-        state.gyro_mag = np.linalg.norm(state.gyro)
-
-        # 4. Run hit detector and note selection
+        state.process_raw_data()
         self._update_hit_detector(state)
-
-        # 5. Process continuous MIDI mappings
         self._process_mappings(state)
 
     def _update_hit_detector(self, state: ControllerState):
@@ -99,8 +92,7 @@ class MidiMapper:
         self._select_note_from_yaw(state)
         
         # Send MIDI
-        channel = state.id + 1
-        self.midi_out.send_note_on(channel, state.current_note, velocity)
+        self.midi_out.send_note_on(state.midi_channel, state.current_note, velocity)
         
         # Schedule Note Off (in a real implementation, this should be handled more robustly)
         # For now, we'll rely on a simple state check in the main loop or a separate thread.
@@ -115,28 +107,37 @@ class MidiMapper:
         scale_cfg = self.config['scale']
         scale = get_scale(scale_cfg['scale'], scale_cfg.get('custom_scale'))
         if not scale: return
+        return
 
-        # Relative yaw from zero reference, wrapped to 0-360
-        relative_yaw = (state.euler[2] - state.yaw_zero_offset + 360) % 360
+        # Use gimbal-lock free yaw calculation
+        yaw = q_utils.quat_to_yaw(state.q_delta)
+        
+        # The rest of the logic remains the same, as it was already using a 
+        # relative yaw calculation implicitly by the nature of the UI's re-zero button.
+        # We just need to feed it a stable yaw value.
         
         num_notes = len(scale)
         zone_width = 360 / num_notes
         
         # Hysteresis to prevent chatter at boundaries
         hysteresis = self.config['yaw_zone_hysteresis']
+
+        print(yaw, zone_width)
+        if (yaw == np.nan): return
         
         # Find the current zone
-        current_zone = int(relative_yaw / zone_width)
+        current_zone = int(yaw / zone_width)
         
         # Check if we are in a hysteresis deadband
         zone_boundary = (current_zone + 1) * zone_width
-        if abs(relative_yaw - zone_boundary) < hysteresis:
+        if abs(yaw - zone_boundary) < hysteresis:
             # We are in a deadband, don't change the note
             return
 
         note_index = current_zone
         midi_note = scale_cfg['root_note'] + scale[note_index]
         state.current_note = max(0, min(127, midi_note))
+        print(state.current_note)
 
     def _process_mappings(self, state: ControllerState):
         mappings = self.config.get('mappings', {})
@@ -153,22 +154,24 @@ class MidiMapper:
             
             if m['type'] == 'cc':
                 cc_val = int(norm_val * 127)
-                key = (state.id, m['cc_number'])
+                key = (state.midi_channel, m['cc_number'])
                 
                 # Delta gate: only send if value changed
                 if self.last_cc_values.get(key) != cc_val:
-                    self.midi_out.send_cc(state.id + 1, m['cc_number'], cc_val)
+                    self.midi_out.send_cc(state.midi_channel, m['cc_number'], cc_val)
                     self.last_cc_values[key] = cc_val
             
             elif m['type'] == 'pitch_bend':
                 # Pitch bend is 14-bit
                 pb_val = int(norm_val * 16383)
-                self.midi_out.send_pitch_bend(state.id + 1, pb_val)
+                self.midi_out.send_pitch_bend(state.midi_channel, pb_val)
 
     def _get_source_value(self, state: ControllerState, source_name: str):
-        if source_name == 'euler_roll': return state.euler[0]
-        if source_name == 'euler_pitch': return state.euler[1]
-        if source_name == 'euler_yaw': return state.euler[2]
+        # Use the delta quaternion's components for mapping.
+        # For small rotations, x, y, z are roughly roll, pitch, yaw.
+        if source_name == 'q_delta_x': return state.q_delta[1]
+        if source_name == 'q_delta_y': return state.q_delta[2]
+        if source_name == 'q_delta_z': return state.q_delta[3]
         if source_name == 'accel_mag': return state.accel_mag
         if source_name == 'gyro_mag': return state.gyro_mag
         return None
@@ -177,7 +180,7 @@ class MidiMapper:
         """A simple way to handle note offs for this implementation."""
         now = time.monotonic()
         note_duration_ms = self.config['hit_detector']['note_duration_ms']
-        for cid, state in controllers.items():
+        for _, state in controllers.items():
             if state.hit_state == "refractory" and (now - state.last_note_time) * 1000 >= note_duration_ms:
                  if (now - state.last_note_time) * 1000 < note_duration_ms + 50: # Send only once
-                    self.midi_out.send_note_off(state.id + 1, state.current_note)
+                    self.midi_out.send_note_off(state.midi_channel, state.current_note)

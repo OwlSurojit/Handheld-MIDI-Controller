@@ -4,5 +4,5 @@ numpy
 OneEuroFilter
 PyQt5
 psutil
-pygame 
+pyqtgraph
 PyOpenGL

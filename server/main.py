@@ -1,34 +1,18 @@
 import argparse
 import sys
-import time
 import threading
+import time
+from typing import Dict
 
 from server.config import load_config, get_config
-from server.receiver import receiver_thread, stop_receiver, get_controllers
 from server.midi_output import MIDIOutput
-from server.midi_mapper import MidiMapper
+from server.controller_state import ControllerState
+from server.midi_mapper import MidiMapper 
+from server.receiver import receiver_thread
 
-def main_loop(mapper: MidiMapper):
-    """The main processing loop of the server."""
-    print("Starting processing loop...")
-    controllers = get_controllers()
-    
-    while not stop_event.is_set():
-        active_controllers = list(controllers.values())
-        if not active_controllers:
-            time.sleep(0.01)
-            continue
 
-        for state in active_controllers:
-            mapper.process(state)
-        
-        # Handle note-offs in a simple way for this iteration
-        mapper.send_scheduled_note_offs(controllers)
-
-        # Sleep briefly to yield CPU
-        time.sleep(0.0005) # 0.5ms sleep as per plan
-
-    print("Processing loop stopped.")
+controllers: Dict[int, ControllerState] = {}
+stop_event = threading.Event()
 
 def main():
     parser = argparse.ArgumentParser(description="Handheld MIDI Controller Server")
@@ -50,19 +34,13 @@ def main():
         backend=config['network']['midi_backend']
     )
 
-    # Initialize the MIDI mapper
-    mapper = MidiMapper(midi_out)
-
-    # Start the UDP receiver thread
-    global stop_event
-    stop_event = threading.Event()
-    
-    recv_thread = threading.Thread(target=receiver_thread, daemon=True)
+    # Start the UDP receiver thread    
+    recv_thread = threading.Thread(target=receiver_thread, args=(stop_event,), daemon=True)
     recv_thread.start()
 
-    # Start the main processing loop in a separate thread
-    proc_thread = threading.Thread(target=main_loop, args=(mapper,), daemon=True)
-    proc_thread.start()
+    # Initialize the MIDI mapper & start the main processing loop in a separate thread
+    mapper = MidiMapper(midi_out, stop_event)
+    mapper.start()
 
     # Launch UI if requested
     if args.ui:
@@ -72,7 +50,7 @@ def main():
         # This will block until the UI is closed.
         # The UI will need access to the server state (controllers, config).
         # For this iteration, we pass the get_controllers function.
-        launch_ui(get_controllers)
+        launch_ui()
     else:
         # If no UI, just wait for Ctrl+C
         print("Server running. Press Ctrl+C to stop.")
@@ -84,10 +62,9 @@ def main():
 
     # Shutdown sequence
     stop_event.set()
-    stop_receiver()
     
     recv_thread.join(timeout=1)
-    proc_thread.join(timeout=1)
+    mapper.join(timeout=1)
     
     midi_out.close()
     print("Server shut down gracefully.")

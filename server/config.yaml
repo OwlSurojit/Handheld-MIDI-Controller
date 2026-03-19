@@ -20,29 +20,29 @@ yaw_zone_hysteresis: 3              # degrees deadband at zone boundaries
 # MIDI Mappings
 mappings:
   volume:
-    source: euler_pitch
+    source: q_delta_x
     type: cc
     cc_number: 7
-    range: [-60, 60]
+    range: [-1, 1]
     filter: { min_cutoff: 2.0, beta: 0.02 }
   filter_cutoff:
-    source: euler_roll
+    source: q_delta_y
     type: cc
     cc_number: 74
-    range: [-45, 45]
+    range: [-1, 1]
     filter: { min_cutoff: 1.5, beta: 0.01 }
-  expression:
-    source: gyro_mag
-    type: cc
-    cc_number: 11
-    range: [0, 500]
-    filter: { min_cutoff: 3.0, beta: 0.05 }
-  breath:
-    source: accel_mag
-    type: cc
-    cc_number: 2
-    range: [0, 4]
-    filter: { min_cutoff: 3.0, beta: 0.05 }
+  # expression:
+  #   source: gyro_mag
+  #   type: cc
+  #   cc_number: 11
+  #   range: [0, 500]
+  #   filter: { min_cutoff: 3.0, beta: 0.05 }
+  # breath:
+  #   source: accel_mag
+  #   type: cc
+  #   cc_number: 2
+  #   range: [0, 4]
+  #   filter: { min_cutoff: 3.0, beta: 0.05 }
 
 # Hit detection thresholds
 hit_detector:

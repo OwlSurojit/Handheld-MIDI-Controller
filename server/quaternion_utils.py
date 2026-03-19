@@ -20,33 +20,30 @@ def quat_normalize(q):
     norm = np.linalg.norm(q)
     if norm == 0:
         return np.array([1.0, 0.0, 0.0, 0.0])
+    if norm == np.inf or norm == -np.inf:
+        print(f"Infinite quaternion norm detected: q={q}, norm={norm}")
+        return np.array([1.0, 0.0, 0.0, 0.0])
     return q / norm
 
-def quat_to_euler(q):
+def quat_to_yaw(q):
     """
-    Convert a quaternion (w, x, y, z) to Euler angles (roll, pitch, yaw).
-    This is a ZYX intrinsic rotation.
-    Roll is rotation around X.
-    Pitch is rotation around Y.
-    Yaw is rotation around Z.
+    Extract yaw from a quaternion, avoiding gimbal lock.
+    Returns yaw in degrees (0-360).
     """
     w, x, y, z = q
-
-    # Roll (x-axis rotation)
-    sinr_cosp = 2 * (w * x + y * z)
-    cosr_cosp = 1 - 2 * (x * x + y * y)
-    roll = np.arctan2(sinr_cosp, cosr_cosp)
-
-    # Pitch (y-axis rotation)
-    sinp = 2 * (w * y - z * x)
-    if np.abs(sinp) >= 1:
-        pitch = np.copysign(np.pi / 2, sinp)  # use 90 degrees if out of range
-    else:
-        pitch = np.arcsin(sinp)
-
-    # Yaw (z-axis rotation)
     siny_cosp = 2 * (w * z + x * y)
     cosy_cosp = 1 - 2 * (y * y + z * z)
+    print(siny_cosp, cosy_cosp)
     yaw = np.arctan2(siny_cosp, cosy_cosp)
+    print(yaw)
+    return (np.degrees(yaw) + 360) % 360
 
-    return np.degrees(roll), np.degrees(pitch), np.degrees(yaw)
+def quat_to_angle_axis(q):
+    """Convert quaternion to angle-axis representation."""
+    w, x, y, z = q
+    angle = 2 * np.atan2(np.sqrt(x*x + y*y + z*z), w)
+    s = np.sqrt(1 - w*w)
+    if s < 0.001:
+        return angle, np.array([1, 0, 0])  # Arbitrary axis
+    else:
+        return angle, np.array([x/s, y/s, z/s])
