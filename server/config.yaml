@@ -15,18 +15,17 @@ controllers:
 scale:
   scale: pentatonic_major
   root_note: 60                       # C4
-yaw_zone_hysteresis: 3              # degrees deadband at zone boundaries
 
 # MIDI Mappings
 mappings:
   volume:
-    source: q_delta_x
+    source: swing_ud
     type: cc
     cc_number: 7
-    range: [-1, 1]
+    range: [1, -1]
     filter: { min_cutoff: 2.0, beta: 0.02 }
   filter_cutoff:
-    source: q_delta_y
+    source: twist
     type: cc
     cc_number: 74
     range: [-1, 1]
@@ -46,10 +45,14 @@ mappings:
 
 # Hit detection thresholds
 hit_detector:
-  gyro_onset_threshold: 150         # °/s
-  accel_confirm_threshold: 1.5      # g
-  velocity_gyro_weight: 0.6         # α: gyro vs accel contribution
+  note_source: swing_lr
+  note_range: [-1, 1]
+  gyro_onset_threshold: 300       # °/s
+  max_velocity_gyro: 2000         # °/s
+  accel_onset_threshold: 0.5      # g
+  velocity_gyro_weight: 0.6       # α: gyro vs accel contribution
   velocity_min: 20
   velocity_max: 127
-  refractory_ms: 250
+  hit_window_ms: 100
+  refractory_ms: 50
   note_duration_ms: 100

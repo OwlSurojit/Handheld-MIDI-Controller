@@ -52,92 +52,69 @@ class MidiMapper(threading.Thread):
         if state.hit_state == "refractory" and (now - state.last_note_time) * 1000 > hit_cfg['refractory_ms']:
             state.hit_state = "idle"
 
+        # "Drumstick Algorithm"
+        vertical_accel = state.swing_accel[2]
+        downward_gyro = state.swing_gyro[0]
+
         # State: idle -> armed
-        if state.hit_state == "idle" and state.gyro_mag > hit_cfg['gyro_onset_threshold']:
+        if state.hit_state == "idle" and downward_gyro > hit_cfg['gyro_onset_threshold']:
+            #and vertical_accel < 1 - hit_cfg['accel_onset_threshold']: 
             state.hit_state = "armed"
             state.hit_timestamp = now
-            state.peak_gyro_window.clear()
-            state.peak_accel_window.clear()
+            state.hit_max_gyro = downward_gyro
+            state.hit_max_accel = vertical_accel
 
         # State: armed -> check for confirmation
         if state.hit_state == "armed":
-            state.peak_gyro_window.append(state.gyro_mag)
-            state.peak_accel_window.append(state.accel_mag)
 
             # Timeout if no confirmation
-            if (now - state.hit_timestamp) > 0.1: # 100ms window
+            if (now - state.hit_timestamp) * 1000 > hit_cfg['hit_window_ms']:
                 state.hit_state = "idle"
                 return
 
-            if state.accel_mag > hit_cfg['accel_confirm_threshold']:
+            if downward_gyro > state.hit_max_gyro:
+                state.hit_max_gyro = downward_gyro
+            if vertical_accel < state.hit_max_accel:
+                state.hit_max_accel = vertical_accel
+
+            if downward_gyro < 0:
                 self._trigger_note(state)
+            
 
     def _trigger_note(self, state: ControllerState):
         hit_cfg = self.config['hit_detector']
         
         # Calculate velocity
-        peak_gyro = max(state.peak_gyro_window) if state.peak_gyro_window else 0
-        peak_accel = max(state.peak_accel_window) if state.peak_accel_window else 0
+
+        # norm_gyro = min(peak_gyro / (hit_cfg['gyro_onset_threshold'] * 2), 1.0)
+        # norm_accel = min(peak_accel / (hit_cfg['accel_confirm_threshold'] * 2), 1.0)
         
-        norm_gyro = min(peak_gyro / (hit_cfg['gyro_onset_threshold'] * 2), 1.0)
-        norm_accel = min(peak_accel / (hit_cfg['accel_confirm_threshold'] * 2), 1.0)
-        
-        alpha = hit_cfg['velocity_gyro_weight']
-        v = alpha * norm_gyro + (1 - alpha) * norm_accel
+        # alpha = hit_cfg['velocity_gyro_weight']
+        # v = alpha * norm_gyro + (1 - alpha) * norm_accel
+
+        v = min(state.hit_max_gyro / (hit_cfg['max_velocity_gyro'] - hit_cfg['gyro_onset_threshold']), 1.0)
         
         velocity = int(hit_cfg['velocity_min'] + v * (hit_cfg['velocity_max'] - hit_cfg['velocity_min']))
-        velocity = max(0, min(127, velocity))
+        # velocity = max(0, min(127, velocity))
 
-        # Select note based on yaw
-        self._select_note_from_yaw(state)
+        # Select note based on source
+        scale_cfg = self.config['scale']
+        scale = get_scale(scale_cfg['scale'], scale_cfg.get('custom_scale'))
+        note_source_val = self._get_source_value(state, hit_cfg['note_source'])
+        if note_source_val is None or scale is None:
+            return
+        num_notes = len(scale)
+        range = hit_cfg['note_range']
+        note_index = int(num_notes * ((note_source_val - range[0]) / (range[1] - range[0])))
+        state.current_note = scale_cfg['root_note'] + scale[note_index]
+
         
         # Send MIDI
+        print(f"Triggering note {state.current_note} with velocity {velocity} on channel {state.midi_channel}")
         self.midi_out.send_note_on(state.midi_channel, state.current_note, velocity)
-        
-        # Schedule Note Off (in a real implementation, this should be handled more robustly)
-        # For now, we'll rely on a simple state check in the main loop or a separate thread.
-        # A better way is a priority queue of note-off events.
-        # For this implementation, we'll just send a note-off after a fixed duration in a simple way.
-        # This is a simplification from the plan.
         
         state.hit_state = "refractory"
         state.last_note_time = time.monotonic()
-
-    def _select_note_from_yaw(self, state: ControllerState):
-        scale_cfg = self.config['scale']
-        scale = get_scale(scale_cfg['scale'], scale_cfg.get('custom_scale'))
-        if not scale: return
-        return
-
-        # Use gimbal-lock free yaw calculation
-        yaw = q_utils.quat_to_yaw(state.q_delta)
-        
-        # The rest of the logic remains the same, as it was already using a 
-        # relative yaw calculation implicitly by the nature of the UI's re-zero button.
-        # We just need to feed it a stable yaw value.
-        
-        num_notes = len(scale)
-        zone_width = 360 / num_notes
-        
-        # Hysteresis to prevent chatter at boundaries
-        hysteresis = self.config['yaw_zone_hysteresis']
-
-        print(yaw, zone_width)
-        if (yaw == np.nan): return
-        
-        # Find the current zone
-        current_zone = int(yaw / zone_width)
-        
-        # Check if we are in a hysteresis deadband
-        zone_boundary = (current_zone + 1) * zone_width
-        if abs(yaw - zone_boundary) < hysteresis:
-            # We are in a deadband, don't change the note
-            return
-
-        note_index = current_zone
-        midi_note = scale_cfg['root_note'] + scale[note_index]
-        state.current_note = max(0, min(127, midi_note))
-        print(state.current_note)
 
     def _process_mappings(self, state: ControllerState):
         mappings = self.config.get('mappings', {})
@@ -169,12 +146,17 @@ class MidiMapper(threading.Thread):
     def _get_source_value(self, state: ControllerState, source_name: str):
         # Use the delta quaternion's components for mapping.
         # For small rotations, x, y, z are roughly roll, pitch, yaw.
-        if source_name == 'q_delta_x': return state.q_delta[1]
-        if source_name == 'q_delta_y': return state.q_delta[2]
-        if source_name == 'q_delta_z': return state.q_delta[3]
-        if source_name == 'accel_mag': return state.accel_mag
-        if source_name == 'gyro_mag': return state.gyro_mag
-        return None
+        match source_name:
+            case 'q_angle': return state.q_angle
+            case 'q_axis_x': return state.q_axis[0]
+            case 'q_axis_y': return state.q_axis[1]
+            case 'q_axis_z': return state.q_axis[2]
+            case 'twist_value' | 'twist': return state.twist_value
+            case 'swing_lr' | 'lr' | 'swing_z': return state.swing_lr
+            case 'swing_ud' | 'ud' | 'swing_x': return state.swing_ud
+            case 'accel_mag': return state.accel_mag
+            case 'gyro_mag': return state.gyro_mag
+            case _: return None
 
     def send_scheduled_note_offs(self, controllers: dict):
         """A simple way to handle note offs for this implementation."""

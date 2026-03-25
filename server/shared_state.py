@@ -6,11 +6,14 @@ from server.controller_state import ControllerState
 controllers: Dict[bytes, ControllerState] = {}
 _new_controller_callbacks = []
 _controller_removed_callbacks = []
-_free_midi_channels = list(range(16))
+_free_midi_channels = list(range(1,17))
 
-def get_controller(mac, source_ip=None):
-    if mac not in controllers:
-        add_controller(mac, source_ip)
+def has_controller(mac):
+    return mac in controllers
+
+def get_controller(mac, ip_addr = None):
+    if mac not in controllers and ip_addr is not None:
+        add_controller(mac, ip_addr)
     return controllers[mac]
 
 def add_controller(mac, source_ip):

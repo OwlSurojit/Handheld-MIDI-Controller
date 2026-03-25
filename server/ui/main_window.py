@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QPushButton, QComboBox, QLabel, QFormLayout
 )
-from PyQt5.QtCore import QTimer, pyqtSignal
+from PyQt5.QtCore import QTimer, pyqtSignal, Qt
 
 from server.shared_state import controllers, register_new_controller_callback
 from server.config import get_config, load_config
@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
             layout = QHBoxLayout()
             layout.setContentsMargins(5, 5, 5, 5)
             
-            info_label = QLabel(f"MAC: {state.mac}  |  IP: {state.source_ip}  |  Channel: {state.midi_channel}")
+            info_label = QLabel(f"MAC: {state.mac.hex()}  |  IP: {state.source_ip}  |  Channel: {state.midi_channel}")
             viz_button = QPushButton("Visualise")
             
             layout.addWidget(info_label)
@@ -126,6 +126,11 @@ class MainWindow(QMainWindow):
 
 def launch_ui():
     """Entry point for launching the PyQt application."""
+    # pyqtgraph OpenGL items cache shader programs at class scope.
+    # Sharing contexts keeps those programs valid across multiple GLViewWidget windows.
+    aa_share_gl = getattr(Qt, "AA_ShareOpenGLContexts", None)
+    if aa_share_gl is not None:
+        QApplication.setAttribute(aa_share_gl, True)
     app = QApplication(sys.argv)
     # Ensure config is loaded before UI
     try:
