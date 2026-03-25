@@ -291,7 +291,7 @@ void loop() {
     if (!discovered) {
         handleDiscoveryResponse();
         // Send discovery request every 1 second until discovered
-        if (millis() - lastDiscoveryTime >= 1000) {
+        if (!discovered && millis() - lastDiscoveryTime >= 1000) {
             DiscoveryRequestPacket disc_pkt = {
                 .type = DISCOVERY_REQUEST
             };

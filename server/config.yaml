@@ -1,7 +1,6 @@
 # Network
 network:
   udp_port: 5005
-  visualiser_forward_port: 5006       # null to disable forwarding
   midi_port_name: "Handheld MIDI Controller"
   midi_backend: auto                  # auto | jack | alsa | coremidi | winmm
 

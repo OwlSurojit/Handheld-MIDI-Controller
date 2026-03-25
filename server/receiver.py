@@ -66,7 +66,7 @@ def receiver_thread(stop_event):
                 if has_controller(mac):
                     continue
                 print(f"Discovery request from {addr[0]} (MAC: {mac.hex()})")
-                add_controller(mac, addr[0])
+                # add_controller(mac, addr[0]) This will be done when the first sensor data packet arrives. Otherwise the controller might never leave discovery mode
                 # Send simple discovery response ACK (controller reads source IP)
                 response = bytes([DISCOVERY_RESPONSE])
                 sock.sendto(response, addr)
