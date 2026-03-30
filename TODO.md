@@ -13,10 +13,10 @@
   - Rework new controller / controller offline / remove controller / ... event flow
   - Check how the different threads access multiple controllers
   - Should the "main_loop" (currently processor thread) move?
-- CONFIG UI
-  - 
+- GUI
+  - Make Controller cards more compact and flex list (grid / horizontal / ...); context menu for details, remove, etc
+  - grey out inactive controllers
+  - Bulk apply config
 
 # BUGS
-- OneEuroFilter is returning nans at some point and then it collapses (only nans) --> do we even need her???    NO!
 - Every now and again there is a massive random spike in accel or gyro data --> maybe we will need to bring back some kind of filter...
-- 

@@ -1,142 +1,186 @@
 import sys
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QListWidget, QListWidgetItem, QPushButton, QComboBox, QLabel, QFormLayout
+    QApplication,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
+    QSplitter,
+    QLabel,
 )
-from PyQt5.QtCore import QTimer, pyqtSignal, Qt
+from PyQt5.QtGui import QPixmap
 
-from server.shared_state import controllers, register_new_controller_callback
-from server.config import get_config, load_config
-from server.scales import SCALES
+from server.config import (
+    import_config_from_file,
+    save_to_default_path,
+    set_controller_muted,
+)
+from server.shared_state import controllers
 from server.ui.dialogs.visualiser_window import VisualiserWindow
+import server.ui.widgets.controller_config_panel as controller_config_panel
+from server.ui.widgets.controller_list import ControllerListWidget
+from server.ui.widgets.preset_manager import PresetBar
 
 
 class MainWindow(QMainWindow):
-    new_controller_signal = pyqtSignal(int)
-
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Handheld MIDI Controller - Settings")
-        self.setGeometry(100, 100, 500, 400)
+        self.setWindowTitle("Handheld MIDI Controller")
+        self.setGeometry(100, 100, 980, 620)
 
-        self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
-        
         self.visualiser_windows: dict[bytes, VisualiserWindow] = {}
 
-        # --- Controllers Tab ---
-        self.controllers_tab = QWidget()
-        self.tabs.addTab(self.controllers_tab, "Controllers")
-        self.controllers_layout = QVBoxLayout()
-        self.controllers_tab.setLayout(self.controllers_layout)
+        root = QWidget(self)
+        self.setCentralWidget(root)
+        self.root_layout = QVBoxLayout(root)
+        self.root_layout.setContentsMargins(12, 12, 12, 12)
+        self.root_layout.setSpacing(10)
+
+        self._build_top_bar()
+        self._build_controller_list()
+        self._build_menu_bar()
+
+        self._refresh_panel_selection()
+
+    def _build_top_bar(self):
+        from PyQt5.QtWidgets import QHBoxLayout
+
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(8)
         
-        self.controller_list = QListWidget()
-        self.controllers_layout.addWidget(self.controller_list)
+        logo = QLabel()
+        logo.setPixmap(QPixmap("server/ui/img/yy_logo.jpg").scaledToHeight(32, Qt.TransformationMode.SmoothTransformation))
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title = QLabel(text="Handheld MIDI Controllers")
+        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        top_bar.addWidget(logo)
+        top_bar.addWidget(title)
 
-        self.rezero_button = QPushButton("Re-zero All Controllers")
-        self.rezero_button.clicked.connect(self.re_zero_all)
-        self.controllers_layout.addWidget(self.rezero_button)
+        top_bar.addStretch()  # Pushes the preset bar to the right
 
-        # --- Scale & Zones Tab ---
-        self.scale_tab = QWidget()
-        self.tabs.addTab(self.scale_tab, "Scale & Zones")
-        self.scale_layout = QFormLayout()
-        self.scale_tab.setLayout(self.scale_layout)
+        self.preset_bar = PresetBar()
+        self.preset_bar.config_reloaded.connect(self._on_preset_config_reloaded)
+        top_bar.addWidget(self.preset_bar, 0, Qt.AlignmentFlag.AlignRight)
 
-        self.scale_selector = QComboBox()
-        self.scale_selector.addItems(SCALES.keys())
-        self.scale_layout.addRow(QLabel("Musical Scale:"), self.scale_selector)
-        
-        # Load initial config value
-        try:
-            config = get_config()
-            current_scale = config.get('scale', {}).get('scale', 'pentatonic_major')
-            self.scale_selector.setCurrentText(current_scale)
-        except (FileNotFoundError, KeyError):
-            pass # Use default if config not loaded yet
+        self.root_layout.addLayout(top_bar)
 
-        self.scale_selector.currentTextChanged.connect(self.on_scale_change)
-        
-        # Connect the signal up
-        self.new_controller_signal.connect(self.on_new_controller)
-        register_new_controller_callback(self.new_controller_signal.emit)
+    def _build_controller_list(self):
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+        self.controller_list = ControllerListWidget()
+        self.controller_list.setMinimumWidth(420)
+        self.controller_list.focused_controller_changed.connect(self.on_focused_controller_changed)
+        self.controller_list.selection_changed.connect(self.on_selection_changed)
+        self.controller_list.visualise_requested.connect(self.open_visualiser)
+        self.controller_list.mute_selected_requested.connect(self.on_mute_selected)
+        self.controller_list.unmute_selected_requested.connect(self.on_unmute_selected)
+        self.controller_list.rezero_selected_requested.connect(self.on_rezero_selected)
 
-        # Do an initial populate
-        self.update_controller_list()
+        self.config_panel = controller_config_panel.ControllerConfigPanel()
+        self.config_panel.setMinimumWidth(360)
+        splitter.addWidget(self.controller_list)
+        splitter.addWidget(self.config_panel)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
 
-    def on_new_controller(self, state):
-        self.update_controller_list()
+        self.root_layout.addWidget(splitter, stretch=1)
 
-    def update_controller_list(self):
-        self.controller_list.clear()
-        if not controllers:
-            self.controller_list.addItem("No controllers detected.")
+    def _build_menu_bar(self):
+        menu_bar = self.menuBar()
+        if menu_bar is None:
             return
 
-        for mac, state in sorted(controllers.items()):
-            item = QListWidgetItem(self.controller_list)
-            
-            widget = QWidget()
-            layout = QHBoxLayout()
-            layout.setContentsMargins(5, 5, 5, 5)
-            
-            info_label = QLabel(f"MAC: {state.mac.hex()}  |  IP: {state.source_ip}  |  Channel: {state.midi_channel}")
-            viz_button = QPushButton("Visualise")
-            
-            layout.addWidget(info_label)
-            layout.addStretch()
-            layout.addWidget(viz_button)
-            widget.setLayout(layout)
-            
-            viz_button.clicked.connect(lambda checked, idx=mac: self.open_visualiser(idx))
-            
-            item.setSizeHint(widget.sizeHint())
-            self.controller_list.setItemWidget(item, widget)
+        file_menu = menu_bar.addMenu("File")
+        if file_menu is None:
+            return
+        file_menu.addAction("Import Config YAML...", self.on_import_config)
+        file_menu.addAction("Save Config", self.on_save_config)
+        file_menu.addSeparator()
+        file_menu.addAction("Set Preset Folder...", self.preset_bar.open_set_presets_folder_dialog)
+        file_menu.addAction("Quit", self.close)
 
-    def open_visualiser(self, controller_id):
+    def closeEvent(self, a0):
+        super().closeEvent(a0)
+
+    def on_focused_controller_changed(self, _controller_mac):
+        self._refresh_panel_selection()
+
+    def on_selection_changed(self):
+        self._refresh_panel_selection()
+
+    def _on_preset_config_reloaded(self):
+        self.controller_list.sync_runtime_settings()
+        self.controller_list.rebuild()
+        self._refresh_panel_selection(force_reload=True)
+
+    def _refresh_panel_selection(self, force_reload: bool = False):
+        selected = [mac for mac in self.controller_list.selected_controller_ids() if mac in controllers]
+        if not selected:
+            self.config_panel.set_controllers([])
+            return
+        self.config_panel.set_controllers(selected, force_reload=force_reload)
+
+    def _selected_states(self):
+        return self.controller_list.selected_states()
+
+    def on_rezero_selected(self):
+        for state in self._selected_states():
+            state.re_zero()
+
+    def on_mute_selected(self):
+        for state in self._selected_states():
+            set_controller_muted(state.mac, True)
+            state.set_muted(True)
+        self.controller_list.refresh_visible_cards()
+
+    def on_unmute_selected(self):
+        for state in self._selected_states():
+            set_controller_muted(state.mac, False)
+            state.set_muted(False)
+        self.controller_list.refresh_visible_cards()
+
+    def on_import_config(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Import Config", "", "YAML Files (*.yaml *.yml)")
+        if not file_path:
+            return
+        try:
+            import_config_from_file(file_path, replace=True)
+            self.controller_list.sync_runtime_settings()
+            self.controller_list.rebuild()
+            self._refresh_panel_selection(force_reload=True)
+            self.preset_bar.handle_external_config_replaced()
+        except Exception as exc:
+            QMessageBox.critical(self, "Import Failed", str(exc))
+
+    def on_save_config(self):
+        try:
+            target = save_to_default_path()
+            QMessageBox.information(self, "Config Saved", f"Saved to {target}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Save Failed", str(exc))
+
+    def open_visualiser(self, controller_id: bytes):
         if controller_id in self.visualiser_windows:
             try:
-                print(f"Visualiser for controller {controller_id.hex()} opening/bringing to front.")
                 self.visualiser_windows[controller_id].show()
                 self.visualiser_windows[controller_id].raise_()
                 self.visualiser_windows[controller_id].activateWindow()
                 return
             except RuntimeError:
                 pass
-            
+
         viz_win = VisualiserWindow(controller_id)
-        
         self.visualiser_windows[controller_id] = viz_win
         viz_win.show()
 
-    def re_zero_all(self):
-        for state in controllers.values():
-            state.re_zero()
-        print("UI: Re-zero signal sent to all controllers.")
-
-    def on_scale_change(self, new_scale):
-        # In a real implementation, this would use the config_sync mechanism
-        # to update the server's running config. For now, we just print.
-        # This requires a thread-safe way to modify the config.
-        print(f"UI: Scale changed to {new_scale}. (Note: Hot-reload not fully implemented in this iteration)")
-        # Example of how it would work:
-        # from server.config_sync import update_config
-        # update_config(['scale', 'scale'], new_scale)
-
 
 def launch_ui():
-    """Entry point for launching the PyQt application."""
-    # pyqtgraph OpenGL items cache shader programs at class scope.
-    # Sharing contexts keeps those programs valid across multiple GLViewWidget windows.
     aa_share_gl = getattr(Qt, "AA_ShareOpenGLContexts", None)
     if aa_share_gl is not None:
         QApplication.setAttribute(aa_share_gl, True)
     app = QApplication(sys.argv)
-    # Ensure config is loaded before UI
-    try:
-        load_config()
-    except FileNotFoundError as e:
-        print(f"Could not load config for UI: {e}")
 
     main_win = MainWindow()
     main_win.show()

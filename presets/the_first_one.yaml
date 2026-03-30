@@ -1,0 +1,96 @@
+network:
+  udp_port: 5005
+  midi_port_name: Handheld MIDI Controller
+  midi_backend: auto
+controllers:
+  28cdc10de0c8:
+    name: the chosen one
+    midi_channel: 1
+    muted: false
+    mappings: []
+    hit:
+      enabled: true
+      note_source: swing_lr
+      note_range:
+      - -1
+      - 1
+      scale:
+        name: Major (Ionian)
+        root_note: 60
+        custom_scale: []
+      note_curve: linear
+      note_curve_amount: 1.0
+      parameters:
+        gyro_onset_threshold: 300
+        gyro_release_threshold: -1000
+        max_velocity_gyro: 2000
+        accel_onset_threshold: 0.5
+        velocity_gyro_weight: 0.6
+        velocity_min: 20
+        velocity_max: 127
+        hit_window_ms: 100
+        refractory_ms: 50
+        note_duration_ms: 100
+  28cdc10de0c9:
+    mappings:
+    - name: volume
+      source: swing_ud
+      type: cc
+      cc_number: 7
+      range:
+      - 1
+      - -1
+      curve: linear
+      curve_amount: 1.0
+    - name: filter_cutoff
+      source: q_angle
+      type: cc
+      cc_number: 74
+      range:
+      - -1
+      - 1
+      curve: linear
+      curve_amount: 1.0
+defaults:
+  mappings:
+  - name: volume
+    source: swing_ud
+    type: cc
+    cc_number: 7
+    range:
+    - 1
+    - -1
+    curve: linear
+    curve_amount: 1.0
+  - name: filter_cutoff
+    source: twist
+    type: cc
+    cc_number: 74
+    range:
+    - -1
+    - 1
+    curve: linear
+    curve_amount: 1.0
+  hit:
+    enabled: true
+    note_source: swing_lr
+    note_range:
+    - -1
+    - 1
+    note_curve: linear
+    note_curve_amount: 1.0
+    scale:
+      name: Major (Ionian)
+      root_note: 60
+      custom_scale: []
+    parameters:
+      gyro_onset_threshold: 300
+      gyro_release_threshold: -1000
+      max_velocity_gyro: 2000
+      accel_onset_threshold: 0.5
+      velocity_gyro_weight: 0.6
+      velocity_min: 20
+      velocity_max: 127
+      hit_window_ms: 100
+      refractory_ms: 50
+      note_duration_ms: 100

@@ -1,0 +1,175 @@
+network:
+  udp_port: 5005
+  midi_port_name: Handheld MIDI Controller
+  midi_backend: auto
+controllers:
+  d83add74080a:
+    midi_channel: 2
+    name: Controller 1
+    muted: false
+    mappings:
+    - name: volume
+      enabled: false
+      source: swing_ud
+      type: cc
+      cc_number: 7
+      range:
+      - 1
+      - -1
+      curve: linear
+      curve_amount: 1.0
+    - name: filter_cutoff
+      enabled: true
+      source: twist
+      type: cc
+      cc_number: 74
+      range:
+      - 1
+      - -1
+      curve: linear
+      curve_amount: 1.0
+    source_ip: 192.168.1.215
+    hit:
+      enabled: true
+      flick_up_to_release_enabled: true
+      scale:
+        name: Chromatic
+        root_note: 35
+  28cdc10de0c9:
+    midi_channel: 1
+    name: Controller 2
+    muted: false
+    mappings: []
+    source_ip: 192.168.1.152
+    hit:
+      enabled: true
+      flick_up_to_release_enabled: true
+      note_source: swing_lr
+      note_range:
+      - 1
+      - -1
+      note_curve: linear
+      note_curve_amount: 1.0
+      scale:
+        name: Major (Ionian)
+        root_note: 60
+        custom_scale: []
+      parameters:
+        gyro_onset_threshold: 300
+        gyro_release_threshold: -700.0
+        max_velocity_gyro: 2000
+        accel_onset_threshold: 0.5
+        velocity_gyro_weight: 0.6
+        velocity_min: 20
+        velocity_max: 127
+        hit_window_ms: 300
+        refractory_ms: 50
+        note_duration_ms: 10000
+  28cdc10de0c8:
+    midi_channel: 1
+    name: Controller 3
+    muted: false
+    mappings: []
+    source_ip: 192.168.1.151
+    hit:
+      enabled: true
+      flick_up_to_release_enabled: true
+      note_source: swing_lr
+      note_range:
+      - 1
+      - -1
+      note_curve: linear
+      note_curve_amount: 1.0
+      scale:
+        name: Major (Ionian)
+        root_note: 60
+        custom_scale: []
+      parameters:
+        gyro_onset_threshold: 300
+        gyro_release_threshold: -700.0
+        max_velocity_gyro: 2000
+        accel_onset_threshold: 0.5
+        velocity_gyro_weight: 0.6
+        velocity_min: 20
+        velocity_max: 127
+        hit_window_ms: 300
+        refractory_ms: 50
+        note_duration_ms: 10000
+  d83add7647eb:
+    midi_channel: 2
+    name: Controller 4
+    muted: false
+    mappings:
+    - name: volume
+      enabled: false
+      source: swing_ud
+      type: cc
+      cc_number: 7
+      range:
+      - 1
+      - -1
+      curve: linear
+      curve_amount: 1.0
+    - name: filter_cutoff
+      enabled: true
+      source: twist
+      type: cc
+      cc_number: 74
+      range:
+      - 1
+      - -1
+      curve: linear
+      curve_amount: 1.0
+    source_ip: 192.168.1.137
+    hit:
+      enabled: true
+      flick_up_to_release_enabled: true
+      scale:
+        name: Chromatic
+        root_note: 35
+defaults:
+  mappings:
+  - name: volume
+    enabled: true
+    source: swing_ud
+    type: cc
+    cc_number: 7
+    range:
+    - 1
+    - -1
+    curve: linear
+    curve_amount: 1.0
+  - name: filter_cutoff
+    enabled: true
+    source: twist
+    type: cc
+    cc_number: 74
+    range:
+    - 1
+    - -1
+    curve: linear
+    curve_amount: 1.0
+  hit:
+    enabled: true
+    flick_up_to_release_enabled: true
+    note_source: swing_lr
+    note_range:
+    - 1
+    - -1
+    note_curve: linear
+    note_curve_amount: 1.0
+    scale:
+      name: Major (Ionian)
+      root_note: 60
+      custom_scale: []
+    parameters:
+      gyro_onset_threshold: 300
+      gyro_release_threshold: -1000
+      max_velocity_gyro: 2000
+      accel_onset_threshold: 0.5
+      velocity_gyro_weight: 0.6
+      velocity_min: 20
+      velocity_max: 127
+      hit_window_ms: 300
+      refractory_ms: 50
+      note_duration_ms: 10000

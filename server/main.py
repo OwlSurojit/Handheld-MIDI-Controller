@@ -4,7 +4,7 @@ import threading
 import time
 from typing import Dict
 
-from server.config import load_config, get_config
+from server.config import get_config, initialize
 from server.midi_output import MIDIOutput
 from server.controller_state import ControllerState
 from server.midi_mapper import MidiMapper 
@@ -21,7 +21,7 @@ def main():
 
     # Load configuration
     try:
-        load_config()
+        initialize()
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

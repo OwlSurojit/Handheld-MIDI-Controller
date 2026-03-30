@@ -5,7 +5,7 @@ import numpy as np
 from server.shared_state import controllers
 from server.controller_state import ControllerState
 from server.midi_output import MIDIOutput
-from server.config import get_config
+from server.config import get_effective_controller_config
 from server.scales import get_scale
 import server.quaternion_utils as q_utils
 
@@ -14,7 +14,6 @@ class MidiMapper(threading.Thread):
         super().__init__()
         self.midi_out = midi_out
         self.stop_event = stop_event
-        self.config = get_config()
         self.last_cc_values = {} # (controller_id, cc_number) -> value
 
     def run(self):
@@ -41,15 +40,22 @@ class MidiMapper(threading.Thread):
 
     def process(self, state: ControllerState):
         state.process_raw_data()
-        self._update_hit_detector(state)
-        self._process_mappings(state)
+        cfg = get_effective_controller_config(state.mac)
+        if cfg.get("muted", False):
+            return
+        self._update_hit_detector(state, cfg)
+        self._process_mappings(state, cfg)
 
-    def _update_hit_detector(self, state: ControllerState):
-        hit_cfg = self.config['hit_detector']
+    def _update_hit_detector(self, state: ControllerState, cfg):
+        hit_cfg = cfg['hit']
+        if not hit_cfg.get('enabled', True):
+            state.hit_state = "idle"
+            return
+        params = hit_cfg['parameters']
         now = time.monotonic()
 
         # Refractory period check
-        if state.hit_state == "refractory" and (now - state.last_note_time) * 1000 > hit_cfg['refractory_ms']:
+        if state.hit_state == "refractory" and (now - state.last_note_time) * 1000 > params['refractory_ms']:
             state.hit_state = "idle"
 
         # "Drumstick Algorithm"
@@ -57,8 +63,8 @@ class MidiMapper(threading.Thread):
         downward_gyro = state.swing_gyro[0]
 
         # State: idle -> armed
-        if state.hit_state == "idle" and downward_gyro > hit_cfg['gyro_onset_threshold']:
-            #and vertical_accel < 1 - hit_cfg['accel_onset_threshold']: 
+        if state.hit_state == "idle" and downward_gyro > params['gyro_onset_threshold']:
+            #and vertical_accel < 1 - params['accel_onset_threshold']:
             state.hit_state = "armed"
             state.hit_timestamp = now
             state.hit_max_gyro = downward_gyro
@@ -68,7 +74,7 @@ class MidiMapper(threading.Thread):
         if state.hit_state == "armed":
 
             # Timeout if no confirmation
-            if (now - state.hit_timestamp) * 1000 > hit_cfg['hit_window_ms']:
+            if (now - state.hit_timestamp) * 1000 > params['hit_window_ms']:
                 state.hit_state = "idle"
                 return
 
@@ -78,47 +84,61 @@ class MidiMapper(threading.Thread):
                 state.hit_max_accel = vertical_accel
 
             if downward_gyro < 0:
-                self._trigger_note(state)
+                self._trigger_note(state, cfg)
+                
+        elif hit_cfg['flick_up_to_release_enabled']:
+            if downward_gyro < params['gyro_release_threshold']:
+                self.send_all_notes_off(state)
+                state.hit_state = "idle"
             
 
-    def _trigger_note(self, state: ControllerState):
-        hit_cfg = self.config['hit_detector']
+    def _trigger_note(self, state: ControllerState, cfg):
+        hit_cfg = cfg['hit']
+        params = hit_cfg['parameters']
         
         # Calculate velocity
 
-        # norm_gyro = min(peak_gyro / (hit_cfg['gyro_onset_threshold'] * 2), 1.0)
-        # norm_accel = min(peak_accel / (hit_cfg['accel_confirm_threshold'] * 2), 1.0)
+        # norm_gyro = min(peak_gyro / (params['gyro_onset_threshold'] * 2), 1.0)
+        # norm_accel = min(peak_accel / (params['accel_confirm_threshold'] * 2), 1.0)
         
-        # alpha = hit_cfg['velocity_gyro_weight']
+        # alpha = params['velocity_gyro_weight']
         # v = alpha * norm_gyro + (1 - alpha) * norm_accel
 
-        v = min(state.hit_max_gyro / (hit_cfg['max_velocity_gyro'] - hit_cfg['gyro_onset_threshold']), 1.0)
+        v = min(state.hit_max_gyro / (params['max_velocity_gyro'] - params['gyro_onset_threshold']), 1.0)
         
-        velocity = int(hit_cfg['velocity_min'] + v * (hit_cfg['velocity_max'] - hit_cfg['velocity_min']))
+        velocity = int(params['velocity_min'] + v * (params['velocity_max'] - params['velocity_min']))
         # velocity = max(0, min(127, velocity))
 
         # Select note based on source
-        scale_cfg = self.config['scale']
-        scale = get_scale(scale_cfg['scale'], scale_cfg.get('custom_scale'))
+        scale_cfg = hit_cfg.get('scale', {})
+        scale = get_scale(scale_cfg.get('name', 'Major (Ionian)'), scale_cfg.get('custom_scale'))
         note_source_val = self._get_source_value(state, hit_cfg['note_source'])
         if note_source_val is None or scale is None:
             return
         num_notes = len(scale)
         range = hit_cfg['note_range']
-        note_index = int(num_notes * ((note_source_val - range[0]) / (range[1] - range[0])))
-        state.current_note = scale_cfg['root_note'] + scale[note_index]
+        norm_note = (note_source_val - range[0]) / (range[1] - range[0])
+        norm_note = max(0.0, min(1.0, norm_note))
+        norm_note = self._apply_curve(norm_note, hit_cfg.get('note_curve', 'linear'), hit_cfg.get('note_curve_amount', 1.0))
+        note_index = min(num_notes - 1, max(0, int(norm_note * num_notes)))
+        state.current_note = scale_cfg.get('root_note', 60) + scale[note_index]
 
         
         # Send MIDI
         print(f"Triggering note {state.current_note} with velocity {velocity} on channel {state.midi_channel}")
         self.midi_out.send_note_on(state.midi_channel, state.current_note, velocity)
+        state.add_on_note(state.current_note)
         
         state.hit_state = "refractory"
         state.last_note_time = time.monotonic()
 
-    def _process_mappings(self, state: ControllerState):
-        mappings = self.config.get('mappings', {})
-        for name, m in mappings.items():
+    def _process_mappings(self, state: ControllerState, cfg):
+        mappings = cfg.get('mappings', [])
+        for m in mappings:
+            if not isinstance(m, dict):
+                continue
+            if not bool(m.get('enabled', True)):
+                continue
             source_val = self._get_source_value(state, m['source'])
             if source_val is None: continue
 
@@ -128,6 +148,7 @@ class MidiMapper(threading.Thread):
             # Clamp and normalize
             norm_val = (source_val - in_min) / (in_max - in_min)
             norm_val = max(0.0, min(1.0, norm_val))
+            norm_val = self._apply_curve(norm_val, m.get('curve', 'linear'), m.get('curve_amount', 1.0))
             
             if m['type'] == 'cc':
                 cc_val = int(norm_val * 127)
@@ -158,11 +179,32 @@ class MidiMapper(threading.Thread):
             case 'gyro_mag': return state.gyro_mag
             case _: return None
 
+    def _apply_curve(self, x: float, curve: str, amount: float) -> float:
+        x = max(0.0, min(1.0, float(x)))
+        amount = max(0.05, float(amount))
+
+        if curve == 'exp':
+            return x ** amount
+        if curve == 'log':
+            return 1.0 - ((1.0 - x) ** amount)
+        if curve == 's_curve':
+            if x < 0.5:
+                return 0.5 * ((2.0 * x) ** amount)
+            return 1.0 - 0.5 * ((2.0 * (1.0 - x)) ** amount)
+        return x
+
     def send_scheduled_note_offs(self, controllers: dict):
         """A simple way to handle note offs for this implementation."""
         now = time.monotonic()
-        note_duration_ms = self.config['hit_detector']['note_duration_ms']
         for _, state in controllers.items():
-            if state.hit_state == "refractory" and (now - state.last_note_time) * 1000 >= note_duration_ms:
-                 if (now - state.last_note_time) * 1000 < note_duration_ms + 50: # Send only once
-                    self.midi_out.send_note_off(state.midi_channel, state.current_note)
+            cfg = get_effective_controller_config(state.mac)
+            note_duration_ms = cfg['hit']['parameters']['note_duration_ms']
+            for note, timestamp in list(state.get_on_notes().items()):
+                if (now - timestamp) * 1000 >= note_duration_ms:
+                    self.midi_out.send_note_off(state.midi_channel, note)
+                    state.remove_on_note(note)
+
+    def send_all_notes_off(self, state: ControllerState):
+        for note in state.get_on_notes().keys():
+            self.midi_out.send_note_off(state.midi_channel, note)
+        state.clear_on_notes()

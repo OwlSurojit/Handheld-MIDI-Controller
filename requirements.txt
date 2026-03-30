@@ -6,3 +6,4 @@ PyQt5
 psutil
 pyqtgraph
 PyOpenGL
+qtawesome

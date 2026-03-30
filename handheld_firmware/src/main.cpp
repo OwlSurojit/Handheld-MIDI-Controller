@@ -40,6 +40,9 @@
 // On the SparkFun 9DoF IMU breakout the default is 1, and when the ADR jumper is closed the value becomes 0
 #define AD0_VAL 1
 
+#define BUTTON_PIN 0
+#define HAPTIC_MOTOR_PIN 2
+
 // Wi-Fi and UDP settings
 const char *WIFI_SSID = "Project"; //"YY"; // "Project" //"Why?-Fi"; //
 const char *WIFI_PASS = "info@yens-yens.nl";//"YE#n11sney"; // "info@yens-yens.nl" // "Wh3r3for3?"; //
@@ -57,6 +60,7 @@ enum PacketType : uint8_t {
     DISCOVERY_REQUEST = 0x01,   // Controller sends to broadcast
     DISCOVERY_RESPONSE = 0x02,  // Server responds with its IP
     SENSOR_DATA = 0x03,         // Normal sensor data
+    HAPTIC_FEEDBACK = 0x04,     // Haptic feedback command
     LATENCY_CHECK = 0xFF        // Latency test echo packet
 };
 
@@ -79,6 +83,11 @@ struct __attribute__((packed)) SensorDataPacket {
     float qw, qx, qy, qz;
     float ax, ay, az;
     float gx, gy, gz;
+};
+
+struct __attribute__((packed)) HapticFeedbackPacket {
+    uint8_t type;  // HAPTIC_FEEDBACK
+    uint8_t command; // Simple command byte to indicate haptic pattern
 };
 
 // Small latency check packet for echo-back latency measurement
@@ -119,17 +128,6 @@ void sendUdpPacket(const uint8_t *packet, size_t size, IPAddress target_ip = IPA
     }
 }
 
-void sendLatencyPacket(uint32_t ts) {
-    LatencyPacket pkt = {
-        .type = LATENCY_CHECK,
-        .ts = ts
-    };
-    memcpy(pkt.mac, MAC_ADDR, 6);
-    IPAddress target = discovered ? SERVER_IP : UDP_BROADCAST_IP;
-    sendUdpPacket((const uint8_t *)&pkt, sizeof(pkt), target);
-    Serial.println("Sent latency test packet");
-}
-
 void handleDiscoveryResponse() {
     // Check if there's a discovery response waiting
     int packetSize = udp.parsePacket();
@@ -146,21 +144,30 @@ void handleDiscoveryResponse() {
     }
 }
 
-void handleEchoPacket() {
-    // Check if there's data waiting on the UDP socket
+void handleLatencyPing() {
+    // Check if there's a latency packet waiting on the UDP socket.
     int packetSize = udp.parsePacket();
     if (packetSize == sizeof(LatencyPacket)) {
-        LatencyPacket echo;
-        udp.read((uint8_t *)&echo, sizeof(LatencyPacket));
+        LatencyPacket ping;
+        udp.read((uint8_t *)&ping, sizeof(LatencyPacket));
         
-        if (echo.type == LATENCY_CHECK && memcmp(echo.mac, MAC_ADDR, 6) == 0) {
-            uint32_t latency_ms = millis() - echo.ts;
-            Serial.print("Latency: ");
-            Serial.print(latency_ms);
-            Serial.println(" ms (round-trip)");
+        if (ping.type == LATENCY_CHECK && memcmp(ping.mac, MAC_ADDR, 6) == 0) {
+            // Echo the packet back unchanged so the server can measure round-trip time.
+            sendUdpPacket((const uint8_t *)&ping, sizeof(LatencyPacket), SERVER_IP);
+        }
+    } else if (packetSize > 0) {
+        // Drain unknown packets to avoid stale data clogging the UDP socket.
+        uint8_t discard[64];
+        while (packetSize > 0) {
+            int readCount = udp.read(discard, packetSize > 64 ? 64 : packetSize);
+            if (readCount <= 0) {
+                break;
+            }
+            packetSize -= readCount;
         }
     }
 }
+
 
 void setup() {
     Serial.begin(115200);
@@ -171,6 +178,9 @@ void setup() {
     connectWiFi();
     WiFi.macAddress(MAC_ADDR);
     Serial.println("WiFi connected");
+
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(HAPTIC_MOTOR_PIN, OUTPUT);
 
 #ifdef USE_SPI
     SPI_PORT.begin();
@@ -280,7 +290,6 @@ void setup() {
 
 int packetCount = 0;
 unsigned long lastPrintTime = millis();
-unsigned long lastLatencyCheckTime = millis();
 unsigned long lastDiscoveryTime = millis();
 
 void loop() {
@@ -303,14 +312,10 @@ void loop() {
         return;
     }
 
-    // Check for echo responses from latency checks
-    handleEchoPacket();
+    // Echo server-initiated latency pings.
+    handleLatencyPing();
 
-    // Send latency check packet every 5 seconds (only if discovered)
-    if (millis() - lastLatencyCheckTime >= 5000) {
-        sendLatencyPacket(millis());
-        lastLatencyCheckTime = millis();
-    }
+    handleHapticFeedback();
 
     // Read any DMP data waiting in the FIFO
     // Note:
@@ -324,12 +329,6 @@ void loop() {
 
     if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) // Was valid data available?
     {
-        // SERIAL_PORT.print(F("Received data! Header: 0x")); // Print the header in HEX so we can see what data is arriving in the FIFO
-        // if ( data.header < 0x1000) SERIAL_PORT.print( "0" ); // Pad the zeros
-        // if ( data.header < 0x100) SERIAL_PORT.print( "0" );
-        // if ( data.header < 0x10) SERIAL_PORT.print( "0" );
-        // SERIAL_PORT.println( data.header, HEX );
-
         if ((data.header & DMP_header_bitmap_Quat6) > 0) // Quat6 from LINEAR_ACCELERATION sensor
         {
             // Q0 value is computed from this equation: Q0^2 + Q1^2 + Q2^2 + Q3^2 = 1.

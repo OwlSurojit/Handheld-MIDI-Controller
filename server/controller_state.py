@@ -2,9 +2,6 @@ import numpy as np
 import time
 import threading
 from collections import deque
-from OneEuroFilter import OneEuroFilter
-
-from server.config import get_config
 from server.quaternion_utils import Quat
 
 class ControllerState:
@@ -17,13 +14,14 @@ class ControllerState:
         self.mac = controller_mac
         self.source_ip = source_ip
         self.midi_channel = midi_channel
+        self.name = ""
+        self.one_way_latency_ms = None
+        self.data_rate = None
+        self._muted = False
         self.last_packet_time = 0.0
         self.raw_data_queue = deque(maxlen=1)
         self._lock = threading.Lock()
 
-        # Get filter params from config
-        config = get_config()
-        
         # One-Euro filters for all 10 incoming signals
         # The parameters can be tuned in config.yaml for each mapping
         # self.filters = {
@@ -56,15 +54,19 @@ class ControllerState:
         self.prev_swing_ud = 0.0
         self.swing_ud_speed = 0.0
         self.twist_value = 0.0
+        self.swing_accel = np.array([0.0, 0.0, 0.0])
+        self.swing_gyro = np.array([0.0, 0.0, 0.0])
+        
         # Hit detection state machine
         self.hit_state = "idle"  # idle, armed, refractory
         self.hit_timestamp = 0.0
         self.last_note_time = 0.0
         self.hit_max_gyro = 0.0
         self.hit_max_accel = 0.0
-        self.swing_accel = np.array([0.0, 0.0, 0.0])
-        self.swing_gyro = np.array([0.0, 0.0, 0.0])
+        self.current_note = 60
+        self.on_notes = {} # note : timestamp
 
+        # History for visualisation
         self.swing_ud_speed_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.swing_accel_x_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.swing_accel_y_history = deque(maxlen=ControllerState.HISTORY_LEN)
@@ -74,8 +76,7 @@ class ControllerState:
         self.swing_gyro_z_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.accel_mag_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.gyro_mag_history = deque(maxlen=ControllerState.HISTORY_LEN)
-        # Note selection
-        self.current_note = 60
+
 
     def add_raw_data(self, ts, quat, accel, gyro):
         """Add raw data to the queue for processing."""
@@ -183,12 +184,50 @@ class ControllerState:
         with self._lock:
             self.q_ref = self.quat
 
-    def update_filter_params(self, mapping_name, min_cutoff, beta):
-        """Update filter params for a specific source, e.g. 'euler_pitch'."""
-        # This is a bit tricky since mappings use derived values (euler, mag)
-        # and filters run on raw values (quat, accel, gyro).
-        # For now, we assume a global filter setting per raw source.
-        # A more advanced implementation could map this more dynamically.
-        pass
+    def set_muted(self, muted: bool):
+        with self._lock:
+            self._muted = bool(muted)
 
+    def is_muted(self) -> bool:
+        with self._lock:
+            return self._muted
 
+    def set_name(self, name: str):
+        with self._lock:
+            self.name = name or ""
+
+    def get_name(self) -> str:
+        with self._lock:
+            return self.name
+
+    def set_one_way_latency_ms(self, latency_ms: float | None):
+        with self._lock:
+            self.one_way_latency_ms = latency_ms
+
+    def get_one_way_latency_ms(self) -> float | None:
+        with self._lock:
+            return self.one_way_latency_ms
+        
+    def set_data_rate(self, rate_hz: int | None):
+        with self._lock:
+            self.data_rate = rate_hz
+
+    def get_data_rate(self) -> int | None:
+        with self._lock:
+            return self.data_rate
+
+    def add_on_note(self, note: int):
+        with self._lock:
+            self.on_notes[note] = time.monotonic()
+            
+    def remove_on_note(self, note: int):
+        with self._lock:
+            self.on_notes.pop(note, None)
+            
+    def clear_on_notes(self):
+        with self._lock:
+            self.on_notes.clear()
+            
+    def get_on_notes(self):
+        with self._lock:
+            return self.on_notes

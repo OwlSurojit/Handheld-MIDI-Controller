@@ -1,6 +1,7 @@
 from typing import Dict
 
 from server.controller_state import ControllerState
+import server.config as app_config
 
 
 controllers: Dict[bytes, ControllerState] = {}
@@ -21,8 +22,18 @@ def add_controller(mac, source_ip):
     if not _free_midi_channels:
         print("Warning: Maximum number of controllers reached. Ignoring new controller.")
         return
-    midi_channel = _free_midi_channels.pop(0) 
+
+    preferred_channel = app_config.get_saved_controller_channel(mac)
+    if preferred_channel in _free_midi_channels:
+        _free_midi_channels.remove(preferred_channel)
+        midi_channel = preferred_channel
+    else:
+        midi_channel = _free_midi_channels.pop(0)
+
     controllers[mac] = ControllerState(mac, source_ip, midi_channel)
+    app_config.upsert_controller(mac, midi_channel=midi_channel, source_ip=source_ip)
+    controllers[mac].set_name(app_config.get_controller_name(mac))
+    controllers[mac].set_muted(app_config.is_controller_muted(mac))
     for cb in _new_controller_callbacks:
         cb(controllers[mac])
 
