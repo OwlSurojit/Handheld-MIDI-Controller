@@ -1,6 +1,8 @@
 # Defines musical scales as lists of semitone offsets from a root note.
 # A scale is a dictionary of scale_name -> list_of_semitones.
 
+CUSTOM_SCALE_NAME = "Custom"
+
 SCALES = {
     "Major (Ionian)":       [0, 2, 4, 5, 7, 9, 11],  
     "Minor (Aeolian)":      [0, 2, 3, 5, 7, 8, 10],
@@ -18,8 +20,25 @@ SCALES = {
 def get_scale(name: str, custom_scale: list | None = None):
     """
     Returns a scale by name from the SCALES dictionary.
-    If name is 'custom', returns the provided custom_scale list.
+    If name is 'Custom', returns the provided custom_scale list.
     """
-    if name == "custom":
-        return custom_scale if custom_scale is not None else []
-    return SCALES.get(name, SCALES["Major (Ionian)"])
+    name_value = str(name or "").strip()
+    if name_value.lower() == "custom":
+        return list(custom_scale) if custom_scale is not None else []
+    return SCALES.get(name_value, SCALES["Major (Ionian)"])
+
+
+def get_absolute_scale(name: str, root_note: int | None, custom_scale: list | None = None) -> list[int]:
+    """Return absolute MIDI notes for the selected scale."""
+    root_value = 60 if root_note is None else int(root_note)
+    if str(name or "").strip().lower() == "custom":
+        raw_notes = custom_scale or []
+        notes = sorted({int(note) for note in raw_notes if 0 <= int(note) <= 127})
+        if notes:
+            return notes
+        root_value = min(127, max(0, root_value))
+        return [root_value]
+
+    offsets = get_scale(name, None)
+    notes = [root_value + int(offset) for offset in offsets]
+    return [note for note in notes if 0 <= note <= 127]

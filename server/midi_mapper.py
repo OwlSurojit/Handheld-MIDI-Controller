@@ -7,7 +7,7 @@ from server.shared_state import controllers
 from server.controller_state import ControllerState
 from server.midi_output import MIDIOutput
 from server.config import get_effective_controller_config
-from server.scales import get_scale
+from server.scales import get_absolute_scale
 import server.quaternion_utils as q_utils
 
 
@@ -118,7 +118,11 @@ class MidiMapper(threading.Thread):
 
         # Select note based on source
         scale_cfg = hit_cfg.get('scale', {})
-        scale = get_scale(scale_cfg.get('name', 'Major (Ionian)'), scale_cfg.get('custom_scale'))
+        scale = get_absolute_scale(
+            scale_cfg.get('name', 'Major (Ionian)'),
+            scale_cfg.get('root_note', 60),
+            scale_cfg.get('custom_scale'),
+        )
         note_source_val = self._get_source_value(state, hit_cfg['note_source'])
         if note_source_val is None or scale is None:
             return
@@ -128,19 +132,19 @@ class MidiMapper(threading.Thread):
         norm_note = max(0.0, min(1.0, norm_note))
         norm_note = self._apply_curve(norm_note, hit_cfg.get('note_curve', 'linear'), hit_cfg.get('note_curve_amount', 1.0))
         note_index = min(num_notes - 1, max(0, int(norm_note * num_notes)))
-        state.current_note = scale_cfg.get('root_note', 60) + scale[note_index]
+        state.current_note = scale[note_index]
 
         
         # Send MIDI
         print(f"Triggering note {state.current_note} with velocity {velocity} on channel {state.midi_channel}")
         self.midi_out.send_note_on(state.midi_channel, state.current_note, velocity)
         state.add_on_note(state.current_note)
-        self._send_haptic_feedback(state, hit_cfg)
+        self._send_haptic_feedback(state, hit_cfg, velocity)
         
         state.hit_state = "refractory"
         state.last_note_time = time.monotonic()
 
-    def _send_haptic_feedback(self, state: ControllerState, hit_cfg: dict) -> None:
+    def _send_haptic_feedback(self, state: ControllerState, hit_cfg: dict, velocity: int) -> None:
         if self.haptic_sender is None:
             return
 
@@ -149,7 +153,8 @@ class MidiMapper(threading.Thread):
             return
 
         try:
-            duration_ms = max(0, int(haptic_cfg.get('duration_ms', 35)))
+            #duration_ms = max(0, int(haptic_cfg.get('duration_ms', 35)))
+            duration_ms = velocity
             command = int(haptic_cfg.get('command', 0x01))
         except (TypeError, ValueError):
             return

@@ -39,7 +39,7 @@ defaults:
     haptic:
       enabled: true
       command: 1
-      duration_ms: 100
+      duration_ms: 50
     parameters:
       gyro_onset_threshold: 300
       max_velocity_gyro: 2000
