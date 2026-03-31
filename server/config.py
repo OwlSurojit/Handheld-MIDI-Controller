@@ -55,6 +55,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "root_note": 60,
                 "custom_scale": [],
             },
+            "haptic": {
+                "enabled": True,
+                "command": 1,
+                "duration_ms": 100,
+            },
             "parameters": {
                 "gyro_onset_threshold": 300,
                 "gyro_release_threshold": -1000,
@@ -147,6 +152,7 @@ def _normalize_hit_parameters(params: Dict[str, Any]) -> Dict[str, Any]:
 def _normalize_hit_config(hit_cfg: Dict[str, Any]) -> Dict[str, Any]:
     hit_cfg = dict(hit_cfg or {})
     scale = dict(hit_cfg.get("scale", {}))
+    haptic = dict(hit_cfg.get("haptic", {}))
     normalized = {
         "enabled": bool(hit_cfg.get("enabled", True)),
         "flick_up_to_release_enabled": bool(hit_cfg.get("flick_up_to_release_enabled", True)),
@@ -158,6 +164,11 @@ def _normalize_hit_config(hit_cfg: Dict[str, Any]) -> Dict[str, Any]:
             "name": str(scale.get("name", "Major (Ionian)")),
             "root_note": int(scale.get("root_note", 60)),
             "custom_scale": list(scale.get("custom_scale", []) or []),
+        },
+        "haptic": {
+            "enabled": bool(haptic.get("enabled", True)),
+            "command": int(haptic.get("command", 1)) & 0xFF,
+            "duration_ms": max(0, int(haptic.get("duration_ms", 35))),
         },
         "parameters": _normalize_hit_parameters(hit_cfg.get("parameters", {})),
     }

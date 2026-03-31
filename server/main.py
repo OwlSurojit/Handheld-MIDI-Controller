@@ -8,7 +8,7 @@ from server.config import get_config, initialize
 from server.midi_output import MIDIOutput
 from server.controller_state import ControllerState
 from server.midi_mapper import MidiMapper 
-from server.receiver import receiver_thread
+from server.communication import CommunicationThread
 
 
 controllers: Dict[int, ControllerState] = {}
@@ -34,12 +34,12 @@ def main():
         backend=config['network']['midi_backend']
     )
 
-    # Start the UDP receiver thread    
-    recv_thread = threading.Thread(target=receiver_thread, args=(stop_event,), daemon=True)
+    # Start the UDP receiver thread
+    recv_thread = CommunicationThread(stop_event=stop_event)
     recv_thread.start()
 
     # Initialize the MIDI mapper & start the main processing loop in a separate thread
-    mapper = MidiMapper(midi_out, stop_event)
+    mapper = MidiMapper(midi_out, stop_event, haptic_sender=recv_thread)
     mapper.start()
 
     # Launch UI if requested

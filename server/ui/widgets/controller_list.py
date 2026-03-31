@@ -22,7 +22,7 @@ class ControllerListWidget(QWidget):
         self._cards: dict[bytes, ControllerCard] = {}
         self._items: dict[bytes, QListWidgetItem] = {}
         self._syncing_selection = False
-
+        
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)

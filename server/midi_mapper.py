@@ -1,6 +1,7 @@
 import time
 import threading
 import numpy as np
+from typing import Protocol
 
 from server.shared_state import controllers
 from server.controller_state import ControllerState
@@ -9,11 +10,17 @@ from server.config import get_effective_controller_config
 from server.scales import get_scale
 import server.quaternion_utils as q_utils
 
+
+class HapticSender(Protocol):
+    def send_haptic_feedback(self, controller_mac: bytes, command: int = 0x01, duration_ms: int = 35) -> bool:
+        ...
+
 class MidiMapper(threading.Thread):
-    def __init__(self, midi_out: MIDIOutput, stop_event: threading.Event):
+    def __init__(self, midi_out: MIDIOutput, stop_event: threading.Event, haptic_sender: HapticSender | None = None):
         super().__init__()
         self.midi_out = midi_out
         self.stop_event = stop_event
+        self.haptic_sender = haptic_sender
         self.last_cc_values = {} # (controller_id, cc_number) -> value
 
     def run(self):
@@ -128,9 +135,29 @@ class MidiMapper(threading.Thread):
         print(f"Triggering note {state.current_note} with velocity {velocity} on channel {state.midi_channel}")
         self.midi_out.send_note_on(state.midi_channel, state.current_note, velocity)
         state.add_on_note(state.current_note)
+        self._send_haptic_feedback(state, hit_cfg)
         
         state.hit_state = "refractory"
         state.last_note_time = time.monotonic()
+
+    def _send_haptic_feedback(self, state: ControllerState, hit_cfg: dict) -> None:
+        if self.haptic_sender is None:
+            return
+
+        haptic_cfg = hit_cfg.get('haptic', {})
+        if not bool(haptic_cfg.get('enabled', True)):
+            return
+
+        try:
+            duration_ms = max(0, int(haptic_cfg.get('duration_ms', 35)))
+            command = int(haptic_cfg.get('command', 0x01))
+        except (TypeError, ValueError):
+            return
+
+        if duration_ms <= 0:
+            return
+
+        self.haptic_sender.send_haptic_feedback(state.mac, command, duration_ms)
 
     def _process_mappings(self, state: ControllerState, cfg):
         mappings = cfg.get('mappings', [])
