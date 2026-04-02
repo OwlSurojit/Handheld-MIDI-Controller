@@ -16,7 +16,7 @@
 - GUI
   - Make Controller cards more compact and flex list (grid / horizontal / ...); context menu for details, remove, etc
   - grey out inactive controllers
-  - Bulk apply config
+  - Bulk apply config   DONE
 
 # BUGS
 - Every now and again there is a massive random spike in accel or gyro data --> maybe we will need to bring back some kind of filter...

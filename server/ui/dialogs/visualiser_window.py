@@ -78,12 +78,12 @@ class VisualiserWindow(QWidget):
         self.curve_accel_y = self.accel_plot.plot(pen='m', name='Accel Y')
         self.curve_accel_z = self.accel_plot.plot(pen='c', name='Accel Z')
 
-        self.swing_plot = pg.PlotWidget(title="Up/Down Swing Speed")
+        self.swing_plot = pg.PlotWidget(title="Up/Down Swing Acceleration")
         self.swing_plot.addLegend()
-        self.swing_plot.setYRange(-0.2, 0.2)
-        self.swing_plot.setLabel('left', 'Swing Speed')
+        self.swing_plot.setYRange(-200, 200)
+        self.swing_plot.setLabel('left', 'Swing Acceleration')
         self.swing_plot.setLabel('bottom', 'Samples')
-        self.curve_swing = self.swing_plot.plot(pen='y', name='Swing Speed')
+        self.curve_swing_ud_accel = self.swing_plot.plot(pen='y', name='Swing Acceleration')
         graphs_layout.addWidget(self.swing_plot)
 
         for curve in (
@@ -95,7 +95,7 @@ class VisualiserWindow(QWidget):
             self.curve_accel_x,
             self.curve_accel_y,
             self.curve_accel_z,
-            self.curve_swing,
+            self.curve_swing_ud_accel,
         ):
             curve.setClipToView(True)
             curve.setDownsampling(ds=2, auto=False, method='subsample')
@@ -157,7 +157,6 @@ class VisualiserWindow(QWidget):
         if self._frame_count % self.TEXT_UPDATE_EVERY_N_FRAMES == 0:
             self.info_text.setText(
                 f'Swing: {snapshot["q_swing"]} | Twist: {snapshot["q_twist"]} | Twist Angle: {np.degrees(snapshot["twist_angle"]):.1f}°\n'
-                f'Swing2: {snapshot["q_swing2"]} | Twist2: {snapshot["q_twist2"]} | Twist Angle2: {np.degrees(snapshot["twist_angle2"]):.1f}°\n'
                 f'Orig. Quat: {snapshot["quat"]}\n'
                 f'Delta Quat: {snapshot["q_delta"]} | Angle: {np.degrees(angle):.1f}° Axis: ({axis[0]:.2f}, {axis[1]:.2f}, {axis[2]:.2f})'
             )
@@ -173,4 +172,4 @@ class VisualiserWindow(QWidget):
         self.curve_accel_x.setData(snapshot["swing_accel_x_history"])
         self.curve_accel_y.setData(snapshot["swing_accel_y_history"])
         self.curve_accel_z.setData(snapshot["swing_accel_z_history"])
-        self.curve_swing.setData(snapshot["swing_ud_speed_history"])
+        self.curve_swing_ud_accel.setData(snapshot["swing_ud_accel_history"])

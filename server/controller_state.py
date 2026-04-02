@@ -51,23 +51,25 @@ class ControllerState:
         self.q_swing, self.q_twist = Quat.identity(), Quat.identity()  # Swing-twist decomposition
         self.swing_lr = 0.0
         self.swing_ud = 0.0
-        self.prev_swing_ud = 0.0
-        self.swing_ud_speed = 0.0
-        self.twist_value = 0.0
+        self.twist = 0.0
         self.swing_accel = np.array([0.0, 0.0, 0.0])
         self.swing_gyro = np.array([0.0, 0.0, 0.0])
+        self.swing_gyro_ud = 0.0
+        self.prev_swing_gyro_ud = 0.0
+        self.swing_ud_accel = 0.0
+        self.swing_gyro_lr = 0.0
         
         # Hit detection state machine
         self.hit_state = "idle"  # idle, armed, refractory
         self.hit_timestamp = 0.0
         self.last_note_time = 0.0
         self.hit_max_gyro = 0.0
+        self.hit_last_gyro = 0.0
         self.hit_max_accel = 0.0
         self.current_note = 60
         self.on_notes = {} # note : timestamp
 
         # History for visualisation
-        self.swing_ud_speed_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.swing_accel_x_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.swing_accel_y_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.swing_accel_z_history = deque(maxlen=ControllerState.HISTORY_LEN)
@@ -76,7 +78,7 @@ class ControllerState:
         self.swing_gyro_z_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.accel_mag_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.gyro_mag_history = deque(maxlen=ControllerState.HISTORY_LEN)
-
+        self.swing_ud_accel_history = deque(maxlen=ControllerState.HISTORY_LEN)
 
     def add_raw_data(self, ts, quat, accel, gyro):
         """Add raw data to the queue for processing."""
@@ -95,51 +97,31 @@ class ControllerState:
             except IndexError:
                 return # No new data
 
-            # 2. Apply One-Euro filters and assign new arrays atomically to avoid tearing
-            t = time.monotonic()
-            
-            # new_quat = Quat.from_array([
-            #     self.filters['quat_w'](raw_quat[0], t),
-            #     self.filters['quat_x'](raw_quat[1], t),
-            #     self.filters['quat_y'](raw_quat[2], t),
-            #     self.filters['quat_z'](raw_quat[3], t)
-            # ]).normalize()
             self.quat = Quat.from_array(raw_quat).normalize()
             self.accel = np.array(raw_accel)
             self.gyro = np.array(raw_gyro)
 
-            # self.accel = np.array([
-            #     self.filters['accel_x'](raw_accel[0], t),
-            #     self.filters['accel_y'](raw_accel[1], t),
-            #     self.filters['accel_z'](raw_accel[2], t)
-            # ])
-
-            # self.gyro = np.array([
-            #     self.filters['gyro_x'](raw_gyro[0], t),
-            #     self.filters['gyro_y'](raw_gyro[1], t),
-            #     self.filters['gyro_z'](raw_gyro[2], t)
-            # ])
-
-            # 3. Calculate derived values
+            # 2. Calculate derived values
             self.q_delta = self.q_ref.conjugate() * self.quat
             self.q_angle, self.q_axis = self.q_delta.to_angle_axis()
             self.q_swing, self.q_twist = self.q_delta.to_swing_twist(ControllerState.TWIST_AXIS)
-            self.q_swing2, self.q_twist2 = self.q_delta.to_swing_twist_2(ControllerState.TWIST_AXIS)
-            self.twist_value = self.q_twist.y
-            self.twist_angle = self.q_twist.to_angle_axis()[0]
-            self.twist_angle2 = self.q_twist2.to_angle_axis()[0]
+            self.twist = self.q_twist.y
+            self.twist_angle = 2 * np.atan2(self.q_twist.y, self.q_twist.w)
             self.swing_lr = self.q_swing.z
-            self.prev_swing_ud = self.swing_ud
             self.swing_ud = self.q_swing.x
-            self.swing_ud_speed = self.swing_ud - self.prev_swing_ud
             self.accel_mag = np.linalg.norm(self.accel)
             self.gyro_mag = np.linalg.norm(self.gyro)
             
-            # World frame vectors for drumstick hit detection
+            # Twist-corrected vectors for hit detection
             self.swing_accel = self.q_twist.rotate_vector(self.accel)
             self.swing_gyro = self.q_twist.rotate_vector(self.gyro)
+            self.prev_swing_gyro_ud = self.swing_gyro_ud
+            self.swing_gyro_ud = self.swing_gyro[0]
+            alpha = 0.8
+            self.swing_ud_accel = alpha * (self.swing_gyro_ud - self.prev_swing_gyro_ud) + (1 - alpha) * self.swing_ud_accel
+            self.swing_gyro_lr = self.swing_gyro[1]
 
-            self.swing_ud_speed_history.append(self.swing_ud_speed)
+            # 4. Update history for visualisation
             self.swing_accel_x_history.append(self.swing_accel[0])
             self.swing_accel_y_history.append(self.swing_accel[1])
             self.swing_accel_z_history.append(self.swing_accel[2])
@@ -148,6 +130,7 @@ class ControllerState:
             self.swing_gyro_z_history.append(self.swing_gyro[2])
             self.accel_mag_history.append(self.accel_mag)
             self.gyro_mag_history.append(self.gyro_mag)
+            self.swing_ud_accel_history.append(self.swing_ud_accel)
 
     def get_angle_axis(self):
         """Returns the current angle-axis representation."""
@@ -162,10 +145,7 @@ class ControllerState:
                 "axis": self.q_axis.copy(),
                 "q_swing": self.q_swing,
                 "q_twist": self.q_twist,
-                "q_swing2": self.q_swing2,
-                "q_twist2": self.q_twist2,
                 "twist_angle": self.twist_angle,
-                "twist_angle2": self.twist_angle2,
                 "quat": self.quat,
                 "q_delta": self.q_delta,
                 "accel_mag_history": np.array(self.accel_mag_history),
@@ -176,7 +156,7 @@ class ControllerState:
                 "swing_accel_x_history": np.array(self.swing_accel_x_history),
                 "swing_accel_y_history": np.array(self.swing_accel_y_history),
                 "swing_accel_z_history": np.array(self.swing_accel_z_history),
-                "swing_ud_speed_history": np.array(self.swing_ud_speed_history),
+                "swing_ud_accel_history": np.array(self.swing_ud_accel_history),
             }
         
     def re_zero(self):

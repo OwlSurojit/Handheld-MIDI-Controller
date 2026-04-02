@@ -323,14 +323,26 @@ class PianoScaleWidget(QWidget):
         self._keyboard.set_note_range(new_min, new_max)
 
     def expand_left_octave(self) -> None:
+        scrollbar = self._scroll_area.horizontalScrollBar()
         min_note, max_note = self._keyboard.note_range()
-        new_min = max(0, min_note - 12)
-        self._keyboard.set_note_range(self._snap_down_to_c(new_min), max_note)
+        if scrollbar is not None and scrollbar.value() > scrollbar.minimum():
+            scroll_step = int(12 * (scrollbar.maximum() - scrollbar.minimum() + scrollbar.pageStep()) / max(1, (max_note - min_note + 1)))
+            scrollbar.setValue(max(scrollbar.minimum(), scrollbar.value() - scroll_step))
+        else:
+            self._keyboard.set_note_range(self._snap_down_to_c(min_note - 12), max_note)
+            if scrollbar is not None:
+                scrollbar.setValue(scrollbar.minimum())
 
     def expand_right_octave(self) -> None:
+        scrollbar = self._scroll_area.horizontalScrollBar()
         min_note, max_note = self._keyboard.note_range()
-        new_max = min(127, max_note + 12)
-        self._keyboard.set_note_range(min_note, self._snap_up_to_b(new_max))
+        if scrollbar is not None and scrollbar.value() < scrollbar.maximum():
+            scroll_step = int(12 * (scrollbar.maximum() - scrollbar.minimum() + scrollbar.pageStep()) / max(1, (max_note - min_note + 1)))
+            scrollbar.setValue(min(scrollbar.maximum(), scrollbar.value() + scroll_step))
+        else:
+            self._keyboard.set_note_range(min_note, self._snap_up_to_b(max_note + 12))
+            if scrollbar is not None:
+                scrollbar.setValue(scrollbar.maximum())
 
     def _snap_down_to_c(self, note: int) -> int:
         return max(0, int(note) - (int(note) % 12))

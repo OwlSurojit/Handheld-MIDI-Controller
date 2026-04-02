@@ -23,7 +23,7 @@ from server.config import get_controller_name, get_effective_controller_config, 
 from server.scales import CUSTOM_SCALE_NAME, SCALES, get_scale
 from server.ui.dialogs.hit_advanced_dialog import HitAdvancedDialog
 from server.ui.dialogs.mapping_config_dialog import MappingConfigDialog
-from server.ui.widgets.config_options import MAPPING_NAME_PRESETS, MAPPING_SOURCE_OPTIONS, NEW_MAPPING_TEMPLATE
+from server.config_consts import MAPPING_NAME_PRESETS, MAPPING_SOURCE_OPTIONS, NEW_MAPPING_TEMPLATE
 from server.ui.widgets.scale_selector import PianoScaleWidget
 
 
@@ -175,12 +175,13 @@ class MappingRow(QFrame):
         layout.addWidget(self.cc_spin)
 
         self.source_combo = QComboBox()
-        self.source_combo.addItems(MAPPING_SOURCE_OPTIONS)
+        self.source_combo.addItems(list(MAPPING_SOURCE_OPTIONS.keys()))
         source_value = self.mapping_cfg.get("source", "swing_ud")
         if source_value is _MIXED:
             self.source_combo.setCurrentIndex(-1)
         else:
-            self.source_combo.setCurrentText(str(source_value))
+            display_value = {v["name"]: k for k, v in MAPPING_SOURCE_OPTIONS.items()}.get(source_value, source_value)
+            self.source_combo.setCurrentText(str(display_value))
         self.source_combo.currentTextChanged.connect(self._on_source_changed)
         layout.addWidget(self.source_combo, 2)
 
@@ -244,7 +245,10 @@ class MappingRow(QFrame):
     def _on_source_changed(self, value: str):
         if self._loading:
             return
-        self.mapping_cfg["source"] = value
+        mapping = MAPPING_SOURCE_OPTIONS.get(value, {})
+        self.mapping_cfg["source"] = mapping.get("name", value) if value else _MIXED
+        self.mapping_cfg["range"] = mapping.get("range", [-1, 1])
+        self.mapping_cfg["invert"] = False
         self.changed.emit()
 
     def _toggle_enabled(self):
@@ -267,7 +271,7 @@ class MappingRow(QFrame):
 
     def get_value(self):
         if self.source_combo.currentIndex() >= 0:
-            self.mapping_cfg["source"] = self.source_combo.currentText()
+            self.mapping_cfg["source"] = MAPPING_SOURCE_OPTIONS.get(self.source_combo.currentText(), {}).get("name", self.source_combo.currentText())
         else:
             self.mapping_cfg["source"] = _MIXED
         self.mapping_cfg["cc_number"] = _MIXED if self.cc_spin.value() < 0 else int(self.cc_spin.value())

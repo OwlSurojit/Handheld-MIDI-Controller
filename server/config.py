@@ -1,84 +1,13 @@
 import copy
 import os
 import threading
+import yaml
 from typing import Any, Callable, Dict, List, Tuple
 
-import yaml
+from server.config_consts import DEFAULT_CONFIG, DEFAULT_APP_SETTINGS
 
-DEFAULT_CONTROLLER_CONFIG: Dict[str, Any] = {
-    "name": "",
-    "midi_channel": None,
-    "muted": False,
-    "mappings": [],
-    "hit": {},
-}
 
-DEFAULT_CONFIG: Dict[str, Any] = {
-    "network": {
-        "udp_port": 5005,
-        "midi_port_name": "Handheld MIDI Controller",
-        "midi_backend": "auto",
-    },
-    "controllers": {},
-    "defaults": {
-        "mappings": [
-            {
-                "name": "volume",
-                "enabled": True,
-                "source": "swing_ud",
-                "type": "cc",
-                "cc_number": 7,
-                "range": [1, -1],
-                "curve": "linear",
-                "curve_amount": 1.0,
-            },
-            {
-                "name": "filter_cutoff",
-                "enabled": True,
-                "source": "twist",
-                "type": "cc",
-                "cc_number": 74,
-                "range": [-1, 1],
-                "curve": "linear",
-                "curve_amount": 1.0,
-            },
-        ],
-        "hit": {
-            "enabled": True,
-            "flick_up_to_release_enabled": True,
-            "note_source": "swing_lr",
-            "note_range": [-1, 1],
-            "note_curve": "linear",
-            "note_curve_amount": 1.0,
-            "scale": {
-                "name": "Major (Ionian)",
-                "root_note": 60,
-                "custom_scale": [],
-            },
-            "haptic": {
-                "enabled": True,
-                "command": 1,
-                "duration_ms": 100,
-            },
-            "parameters": {
-                "gyro_onset_threshold": 300,
-                "gyro_release_threshold": -1000,
-                "max_velocity_gyro": 2000,
-                "accel_onset_threshold": 0.5,
-                "velocity_gyro_weight": 0.6,
-                "velocity_min": 20,
-                "velocity_max": 127,
-                "hit_window_ms": 100,
-                "refractory_ms": 50,
-                "note_duration_ms": 100,
-            },
-        },
-    },
-}
 
-DEFAULT_APP_SETTINGS: Dict[str, Any] = {
-    "presets_directory": "server/presets",
-}
 
 _config: Dict[str, Any] = {}
 _config_path = "config.yaml"
@@ -116,7 +45,8 @@ def _normalize_mapping(mapping: Dict[str, Any]) -> Dict[str, Any]:
             "source": "swing_ud",
             "type": "cc",
             "cc_number": 7,
-            "range": [1, -1],
+            "range": [-1, 1],
+            "invert": False,
             "curve": "linear",
             "curve_amount": 1.0,
         },
@@ -125,9 +55,13 @@ def _normalize_mapping(mapping: Dict[str, Any]) -> Dict[str, Any]:
     merged.pop("filter", None)
     merged["name"] = str(merged.get("name", "custom")).strip() or "custom"
     merged["enabled"] = bool(merged.get("enabled", True))
-    merged["range"] = list(merged.get("range", [1, -1]))
+    merged["range"] = list(merged.get("range", [-1, 1]))
     if len(merged["range"]) != 2:
-        merged["range"] = [1, -1]
+        merged["range"] = [-1, 1]
+    merged["invert"] = bool(merged.get("invert", False))
+    if merged["range"][0] > merged["range"][1]:
+        merged["range"] = [merged["range"][1], merged["range"][0]]
+        merged["invert"] = not merged["invert"]
     merged["curve"] = str(merged.get("curve", "linear"))
     merged["curve_amount"] = float(merged.get("curve_amount", 1.0))
     return merged
@@ -158,6 +92,7 @@ def _normalize_hit_config(hit_cfg: Dict[str, Any]) -> Dict[str, Any]:
         "flick_up_to_release_enabled": bool(hit_cfg.get("flick_up_to_release_enabled", True)),
         "note_source": str(hit_cfg.get("note_source", "swing_lr")),
         "note_range": list(hit_cfg.get("note_range", [-1, 1])),
+        "note_invert": bool(hit_cfg.get("note_invert", False)),
         "note_curve": str(hit_cfg.get("note_curve", "linear")),
         "note_curve_amount": float(hit_cfg.get("note_curve_amount", 1.0)),
         "scale": {
@@ -174,6 +109,9 @@ def _normalize_hit_config(hit_cfg: Dict[str, Any]) -> Dict[str, Any]:
     }
     if len(normalized["note_range"]) != 2:
         normalized["note_range"] = [-1, 1]
+    if normalized["note_range"][0] > normalized["note_range"][1]:
+        normalized["note_range"] = [normalized["note_range"][1], normalized["note_range"][0]]
+        normalized["note_invert"] = not normalized["note_invert"]
     return normalized
 
 
@@ -200,6 +138,10 @@ def _normalize_controller_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
             hit["note_range"] = list(hit.get("note_range", [-1, 1]))
             if len(hit["note_range"]) != 2:
                 hit["note_range"] = [-1, 1]
+            hit["note_invert"] = bool(hit.get("note_invert", False))
+            if hit["note_range"][0] > hit["note_range"][1]:
+                hit["note_range"] = [hit["note_range"][1], hit["note_range"][0]]
+                hit["note_invert"] = not hit["note_invert"]
         if "scale" in hit and isinstance(hit.get("scale"), dict):
             scale = dict(hit.get("scale", {}))
             hit["scale"] = {

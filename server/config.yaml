@@ -10,8 +10,9 @@ defaults:
     type: cc
     cc_number: 7
     range:
-    - 1
     - -1
+    - 1
+    invert: true
     curve: linear
     curve_amount: 1.0
   - name: filter_cutoff
@@ -19,8 +20,9 @@ defaults:
     type: cc
     cc_number: 74
     range:
-    - 1
     - -1
+    - 1
+    invert: true
     curve: linear
     curve_amount: 1.0
   hit:
@@ -28,8 +30,9 @@ defaults:
     flick_up_to_release_enabled: true
     note_source: swing_lr
     note_range:
-    - 1
     - -1
+    - 1
+    note_invert: true
     note_curve: linear
     note_curve_amount: 1.0
     scale:
@@ -43,7 +46,7 @@ defaults:
     parameters:
       gyro_onset_threshold: 300
       max_velocity_gyro: 2000
-      accel_onset_threshold: 0.5
+      accel_onset_threshold: 50
       velocity_gyro_weight: 0.6
       velocity_min: 20
       velocity_max: 127

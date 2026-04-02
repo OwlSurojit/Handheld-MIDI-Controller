@@ -14,8 +14,9 @@ controllers:
       type: cc
       cc_number: 7
       range:
-      - 1
       - -1
+      - 1
+      invert: true
       curve: linear
       curve_amount: 1.0
     - name: filter_cutoff
@@ -24,8 +25,9 @@ controllers:
       type: cc
       cc_number: 74
       range:
-      - 1
       - -1
+      - 1
+      invert: true
       curve: linear
       curve_amount: 1.0
     source_ip: 192.168.1.215
@@ -46,8 +48,9 @@ controllers:
       flick_up_to_release_enabled: true
       note_source: swing_lr
       note_range:
-      - 1
       - -1
+      - 1
+      note_invert: true
       note_curve: linear
       note_curve_amount: 1.0
       scale:
@@ -76,8 +79,9 @@ controllers:
       flick_up_to_release_enabled: true
       note_source: swing_lr
       note_range:
-      - 1
       - -1
+      - 1
+      note_invert: true
       note_curve: linear
       note_curve_amount: 1.0
       scale:
@@ -106,8 +110,9 @@ controllers:
       type: cc
       cc_number: 7
       range:
-      - 1
       - -1
+      - 1
+      invert: true
       curve: linear
       curve_amount: 1.0
     - name: filter_cutoff
@@ -116,8 +121,9 @@ controllers:
       type: cc
       cc_number: 74
       range:
-      - 1
       - -1
+      - 1
+      invert: true
       curve: linear
       curve_amount: 1.0
     source_ip: 192.168.1.137
@@ -135,8 +141,9 @@ defaults:
     type: cc
     cc_number: 7
     range:
-    - 1
     - -1
+    - 1
+    invert: true
     curve: linear
     curve_amount: 1.0
   - name: filter_cutoff
@@ -145,8 +152,9 @@ defaults:
     type: cc
     cc_number: 74
     range:
-    - 1
     - -1
+    - 1
+    invert: true
     curve: linear
     curve_amount: 1.0
   hit:
@@ -154,8 +162,9 @@ defaults:
     flick_up_to_release_enabled: true
     note_source: swing_lr
     note_range:
-    - 1
     - -1
+    - 1
+    note_invert: true
     note_curve: linear
     note_curve_amount: 1.0
     scale:

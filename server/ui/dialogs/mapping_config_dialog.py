@@ -6,10 +6,13 @@ from PyQt5.QtWidgets import (
     QFormLayout,
 )
 
-from server.ui.widgets.config_options import CURVE_OPTIONS
+from server.config_consts import CURVE_OPTIONS, MAPPING_SOURCE_OPTIONS
+from server.ui.widgets.range_invert_field import RangeInvertField
 
 
 class MappingConfigDialog(QDialog):
+    DIAL_RANGE = 100
+    
     def __init__(self, mapping: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Mapping Settings")
@@ -17,7 +20,7 @@ class MappingConfigDialog(QDialog):
         self._touched: set[str] = set()
 
         form = QFormLayout(self)
-
+        
         self.type_combo = QComboBox()
         self.type_combo.addItems(["cc", "pitch_bend"])
         type_value = mapping.get("type")
@@ -28,25 +31,45 @@ class MappingConfigDialog(QDialog):
         self.type_combo.currentTextChanged.connect(lambda _v: self._mark_touched("type"))
         form.addRow("Type", self.type_combo)
 
-        self.range_min = QDoubleSpinBox()
-        self.range_min.setRange(-10000.0, 9999.0)
-        self.range_min.setSpecialValueText(" ")
-        self.range_min.setDecimals(4)
-        self.range_max = QDoubleSpinBox()
-        self.range_max.setRange(-10000.0, 9999.0)
-        self.range_max.setSpecialValueText(" ")
-        self.range_max.setDecimals(4)
+
         map_range = mapping.get("range")
-        if isinstance(map_range, list) and len(map_range) == 2:
-            self.range_min.setValue(float(map_range[0]))
-            self.range_max.setValue(float(map_range[1]))
-        else:
-            self.range_min.setValue(-10000.0)
-            self.range_max.setValue(-10000.0)
-        self.range_min.valueChanged.connect(lambda _v: self._mark_touched("range_min"))
-        self.range_max.valueChanged.connect(lambda _v: self._mark_touched("range_max"))
-        form.addRow("Range Min", self.range_min)
-        form.addRow("Range Max", self.range_max)
+        max_map_range = {v["name"]: v["range"] for v in MAPPING_SOURCE_OPTIONS.values()}.get(mapping.get("source"), [-1, 1])
+        if not isinstance(map_range, list) or len(map_range) != 2:
+            map_range = max_map_range
+
+        if map_range[0] > map_range[1]:
+            map_range = [map_range[1], map_range[0]]
+
+        self.range_invert_field = RangeInvertField(
+            slider_range=list(map(float, max_map_range)),
+            value_range=list(map(float, map_range)),
+            invert=bool(mapping.get("invert", False)),
+            checkbox_label="Invert Source Range",
+            parent=self,
+        )
+        self.range_invert_field.range_changed.connect(lambda _v: self._mark_touched("range"))
+        self.range_invert_field.invert_changed.connect(lambda _v: self._mark_touched("invert"))
+        form.addRow("Source Range", self.range_invert_field)
+
+        # self.range_min = QDial()
+        # self.range_min.setNotchesVisible(True)
+        # self.range_min.setRange(-self.DIAL_RANGE, self.DIAL_RANGE)
+        # #self.range_min.setSpecialValueText(" ")
+        # self.range_max = QDial()
+        # self.range_max.setNotchesVisible(True)
+        # self.range_max.setRange(-self.DIAL_RANGE, self.DIAL_RANGE)
+        # self.range_max.setSpecialValueText(" ")
+        # self.range_max.setDecimals(4)
+        # if isinstance(map_range, list) and len(map_range) == 2:
+        #     self.range_min.setValue(int(map_range[0] / max_map_range[0] * self.DIAL_RANGE))
+        #     self.range_max.setValue(int(map_range[1] / max_map_range[1] * self.DIAL_RANGE))
+        # else:
+        #     self.range_min.setValue(self.DIAL_RANGE)
+        #     self.range_max.setValue(-self.DIAL_RANGE)
+        # self.range_min.valueChanged.connect(lambda _v: self._mark_touched("range_min"))
+        # self.range_max.valueChanged.connect(lambda _v: self._mark_touched("range_max"))
+        # form.addRow("Range Min", self.range_min)
+        # form.addRow("Range Max", self.range_max)
 
         self.curve_combo = QComboBox()
         self.curve_combo.addItems(CURVE_OPTIONS)
@@ -56,17 +79,17 @@ class MappingConfigDialog(QDialog):
         else:
             self.curve_combo.setCurrentText(str(curve_value or "linear"))
         self.curve_combo.currentTextChanged.connect(lambda _v: self._mark_touched("curve"))
-        form.addRow("Curve", self.curve_combo)
+        form.addRow("Response Curve", self.curve_combo)
 
         self.curve_amount = QDoubleSpinBox()
         self.curve_amount.setRange(0.0, 10.0)
         self.curve_amount.setSpecialValueText(" ")
-        self.curve_amount.setDecimals(3)
+        self.curve_amount.setDecimals(2)
         self.curve_amount.setSingleStep(0.05)
         curve_amount_value = mapping.get("curve_amount")
         self.curve_amount.setValue(0.0 if curve_amount_value is None else float(curve_amount_value))
         self.curve_amount.valueChanged.connect(lambda _v: self._mark_touched("curve_amount"))
-        form.addRow("Curve Amount", self.curve_amount)
+        form.addRow("Response Curve Amount", self.curve_amount)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -83,9 +106,15 @@ class MappingConfigDialog(QDialog):
         if "type" in self._touched and self.type_combo.currentIndex() >= 0:
             patch["type"] = self.type_combo.currentText()
 
-        if "range_min" in self._touched or "range_max" in self._touched:
-            if self.range_min.value() > -10000.0 and self.range_max.value() > -10000.0:
-                patch["range"] = [float(self.range_min.value()), float(self.range_max.value())]
+        if "range" in self._touched:
+            patch["range"] = self.range_invert_field.value_range()
+
+        if "invert" in self._touched:
+            patch["invert"] = self.range_invert_field.is_inverted()
+
+        # if "range_min" in self._touched or "range_max" in self._touched:
+        #     if self.range_min.value() > -10000.0 and self.range_max.value() > -10000.0:
+        #         patch["range"] = [float(self.range_min.value()), float(self.range_max.value())]
 
         if "curve" in self._touched and self.curve_combo.currentIndex() >= 0:
             patch["curve"] = self.curve_combo.currentText()

@@ -61,21 +61,22 @@ class MidiMapper(threading.Thread):
         params = hit_cfg['parameters']
         now = time.monotonic()
 
+        # "Drumstick Algorithm"
+        #vertical_accel = state.swing_accel[1]
+        downward_gyro = state.swing_gyro_ud
+        downward_accel = state.swing_ud_accel
+        
         # Refractory period check
-        if state.hit_state == "refractory" and (now - state.last_note_time) * 1000 > params['refractory_ms']:
+        if state.hit_state == "refractory" and downward_gyro <= 0:
+            # and (now - state.last_note_time) * 1000 > params['refractory_ms']:
             state.hit_state = "idle"
 
-        # "Drumstick Algorithm"
-        vertical_accel = state.swing_accel[2]
-        downward_gyro = state.swing_gyro[0]
-
         # State: idle -> armed
-        if state.hit_state == "idle" and downward_gyro > params['gyro_onset_threshold']:
-            #and vertical_accel < 1 - params['accel_onset_threshold']:
+        if state.hit_state == "idle" and downward_gyro > params['gyro_onset_threshold'] and downward_accel > params['accel_onset_threshold']:
             state.hit_state = "armed"
             state.hit_timestamp = now
             state.hit_max_gyro = downward_gyro
-            state.hit_max_accel = vertical_accel
+            state.hit_max_accel = downward_accel
 
         # State: armed -> check for confirmation
         if state.hit_state == "armed":
@@ -85,12 +86,14 @@ class MidiMapper(threading.Thread):
                 state.hit_state = "idle"
                 return
 
-            if downward_gyro > state.hit_max_gyro:
+            if downward_gyro >= state.hit_max_gyro:
                 state.hit_max_gyro = downward_gyro
-            if vertical_accel < state.hit_max_accel:
-                state.hit_max_accel = vertical_accel
+            # else:
+            #     self._trigger_note(state, cfg)
+            if downward_accel > state.hit_max_accel:
+                state.hit_max_accel = downward_accel
 
-            if downward_gyro < 0:
+            if downward_accel < 0:
                 self._trigger_note(state, cfg)
                 
         elif hit_cfg['flick_up_to_release_enabled']:
@@ -111,10 +114,12 @@ class MidiMapper(threading.Thread):
         # alpha = params['velocity_gyro_weight']
         # v = alpha * norm_gyro + (1 - alpha) * norm_accel
 
-        v = min(state.hit_max_gyro / (params['max_velocity_gyro'] - params['gyro_onset_threshold']), 1.0)
+        # v = min(state.hit_max_gyro / (params['max_velocity_gyro'] - params['gyro_onset_threshold']), 1.0)
         
-        velocity = int(params['velocity_min'] + v * (params['velocity_max'] - params['velocity_min']))
+        # velocity = int(params['velocity_min'] + v * (params['velocity_max'] - params['velocity_min']))
         # velocity = max(0, min(127, velocity))
+        
+        velocity = np.interp(state.hit_max_gyro, [params['gyro_onset_threshold'], params['max_velocity_gyro']], [params['velocity_min'], params['velocity_max']])
 
         # Select note based on source
         scale_cfg = hit_cfg.get('scale', {})
@@ -130,6 +135,8 @@ class MidiMapper(threading.Thread):
         range = hit_cfg['note_range']
         norm_note = (note_source_val - range[0]) / (range[1] - range[0])
         norm_note = max(0.0, min(1.0, norm_note))
+        if bool(hit_cfg.get('note_invert', False)):
+            norm_note = 1.0 - norm_note
         norm_note = self._apply_curve(norm_note, hit_cfg.get('note_curve', 'linear'), hit_cfg.get('note_curve_amount', 1.0))
         note_index = min(num_notes - 1, max(0, int(norm_note * num_notes)))
         state.current_note = scale[note_index]
@@ -180,6 +187,8 @@ class MidiMapper(threading.Thread):
             # Clamp and normalize
             norm_val = (source_val - in_min) / (in_max - in_min)
             norm_val = max(0.0, min(1.0, norm_val))
+            if bool(m.get('invert', False)):
+                norm_val = 1.0 - norm_val
             norm_val = self._apply_curve(norm_val, m.get('curve', 'linear'), m.get('curve_amount', 1.0))
             
             if m['type'] == 'cc':
@@ -197,19 +206,7 @@ class MidiMapper(threading.Thread):
                 self.midi_out.send_pitch_bend(state.midi_channel, pb_val)
 
     def _get_source_value(self, state: ControllerState, source_name: str):
-        # Use the delta quaternion's components for mapping.
-        # For small rotations, x, y, z are roughly roll, pitch, yaw.
-        match source_name:
-            case 'q_angle': return state.q_angle
-            case 'q_axis_x': return state.q_axis[0]
-            case 'q_axis_y': return state.q_axis[1]
-            case 'q_axis_z': return state.q_axis[2]
-            case 'twist_value' | 'twist': return state.twist_value
-            case 'swing_lr' | 'lr' | 'swing_z': return state.swing_lr
-            case 'swing_ud' | 'ud' | 'swing_x': return state.swing_ud
-            case 'accel_mag': return state.accel_mag
-            case 'gyro_mag': return state.gyro_mag
-            case _: return None
+        return getattr(state, source_name, None)
 
     def _apply_curve(self, x: float, curve: str, amount: float) -> float:
         x = max(0.0, min(1.0, float(x)))
