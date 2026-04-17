@@ -19,7 +19,7 @@ stop_event = threading.Event()
 
 def main():
     parser = argparse.ArgumentParser(description="Handheld MIDI Controller Server")
-    parser.add_argument("--ui", action="store_true", help="Launch the PyQt5 settings UI")
+    parser.add_argument("--noui", action="store_true", help="Run the server without launching the UI")
     args = parser.parse_args()
 
     # Load configuration
@@ -52,7 +52,7 @@ def main():
     mapper.start()
 
     # Launch UI if requested
-    if args.ui:
+    if not args.noui:
         print("Launching UI...")
         # Late import to avoid pulling in PyQt5 if not needed
         from server.ui.main_window import launch_ui

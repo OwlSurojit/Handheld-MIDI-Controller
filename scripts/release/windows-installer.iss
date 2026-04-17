@@ -28,7 +28,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
-Source: "dist\HandheldMIDI\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "..\..\dist\HandheldMIDI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\Handheld MIDI Controller"; Filename: "{app}\{#AppExeName}"; Parameters: "--ui"
