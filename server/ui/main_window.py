@@ -10,13 +10,14 @@ from PyQt5.QtWidgets import (
     QSplitter,
     QLabel,
 )
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QKeySequence, QPixmap
 
 from server.config import (
     import_config_from_file,
     save_to_default_path,
     set_controller_muted,
 )
+from server.communication import CommunicationThread
 from server.provisioning_service import ProvisioningService
 from server.shared_state import controllers
 from server.ui.dialogs.provisioning_wizard import ProvisioningWizard
@@ -30,11 +31,13 @@ class MainWindow(QMainWindow):
     def __init__(
         self,
         provisioning_service: ProvisioningService | None = None,
+        communication_thread: CommunicationThread | None = None,
     ):
         super().__init__()
         self.setWindowTitle("Handheld MIDI Controller")
         self.setGeometry(100, 100, 980, 620)
         self.provisioning_service = provisioning_service
+        self.communication_thread = communication_thread
 
         self.visualiser_windows: dict[bytes, VisualiserWindow] = {}
 
@@ -83,6 +86,7 @@ class MainWindow(QMainWindow):
         self.controller_list.mute_selected_requested.connect(self.on_mute_selected)
         self.controller_list.unmute_selected_requested.connect(self.on_unmute_selected)
         self.controller_list.rezero_selected_requested.connect(self.on_rezero_selected)
+        self.controller_list.identify_requested.connect(self.on_identify_requested)
         self.controller_list.setup_wizard_requested.connect(self.open_provisioning_wizard)
 
         self.config_panel = controller_config_panel.ControllerConfigPanel()
@@ -102,8 +106,8 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("File")
         if file_menu is None:
             return
-        file_menu.addAction("Import Config YAML...", self.on_import_config)
-        file_menu.addAction("Save Config", self.on_save_config)
+        file_menu.addAction("Import Config YAML...", self.on_import_config, QKeySequence("Ctrl+O"))
+        file_menu.addAction("Save Config", self.on_save_config, QKeySequence("Ctrl+S"))
         file_menu.addSeparator()
         file_menu.addAction("Set Preset Folder...", self.preset_bar.open_set_presets_folder_dialog)
         file_menu.addAction("Quit", self.close)
@@ -152,6 +156,14 @@ class MainWindow(QMainWindow):
             state.set_muted(False)
         self.controller_list.refresh_visible_cards()
 
+    def on_identify_requested(self, controller_mac: bytes):
+        if self.communication_thread is None:
+            QMessageBox.warning(self, "Identify Unavailable", "Communication thread is not ready.")
+            return
+        ok = self.communication_thread.send_identify(controller_mac)
+        if not ok:
+            QMessageBox.warning(self, "Identify Failed", "Unable to queue identify request.")
+
     def on_import_config(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Import Config", "", "YAML Files (*.yaml *.yml)")
         if not file_path:
@@ -166,11 +178,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Import Failed", str(exc))
 
     def on_save_config(self):
-        try:
-            target = save_to_default_path()
-            QMessageBox.information(self, "Config Saved", f"Saved to {target}")
-        except Exception as exc:
-            QMessageBox.critical(self, "Save Failed", str(exc))
+        if (self.preset_bar._save_to_current_or_save_as()):
+            QMessageBox.information(self, "Config Saved", f"Config saved as {self.preset_bar._current_preset_name}")
+        else:
+            QMessageBox.critical(self, "Save Failed", "Failed to save config.")
 
     def open_visualiser(self, controller_id: bytes):
         if controller_id in self.visualiser_windows:
@@ -199,7 +210,10 @@ class MainWindow(QMainWindow):
         wizard.exec_()
 
 
-def launch_ui(provisioning_service: ProvisioningService | None = None):
+def launch_ui(
+    provisioning_service: ProvisioningService | None = None,
+    communication_thread: CommunicationThread | None = None,
+):
     aa_share_gl = getattr(Qt, "AA_ShareOpenGLContexts", None)
     if aa_share_gl is not None:
         QApplication.setAttribute(aa_share_gl, True)
@@ -207,6 +221,7 @@ def launch_ui(provisioning_service: ProvisioningService | None = None):
 
     main_win = MainWindow(
         provisioning_service=provisioning_service,
+        communication_thread=communication_thread,
     )
     main_win.show()
     return app.exec_()

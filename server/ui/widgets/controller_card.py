@@ -4,7 +4,6 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -50,11 +49,14 @@ class ControllerCard(QFrame):
         )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(6)
+        root.setContentsMargins(10, 8, 10, 6)
+        root.setSpacing(2)
+
+        self._latency_ms: float | None = None
+        self._data_rate_hz: float | None = None
 
         title_row = QHBoxLayout()
-        title_row.setSpacing(6)
+        title_row.setSpacing(4)
 
         self.selected_box = QCheckBox()
         self.selected_box.toggled.connect(self._on_selected_box_toggled)
@@ -75,6 +77,12 @@ class ControllerCard(QFrame):
         self.edit_name_button.clicked.connect(self._toggle_name_edit)
         title_row.addWidget(self.edit_name_button)
 
+        self.mute_button = QPushButton("M")
+        self.mute_button.setCheckable(True)
+        self.mute_button.setFixedWidth(26)
+        self.mute_button.toggled.connect(self._on_mute_toggled)
+        title_row.addWidget(self.mute_button)
+
         title_row.addStretch(1)
         title_row.addWidget(QLabel("MIDI Channel"))
 
@@ -87,57 +95,19 @@ class ControllerCard(QFrame):
 
         root.addLayout(title_row)
 
-        content_row = QHBoxLayout()
-        content_row.setSpacing(8)
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(8)
 
-        info_grid = QGridLayout()
-        info_grid.setHorizontalSpacing(8)
-        info_grid.setVerticalSpacing(2)
-
-        info_grid.addWidget(QLabel("MAC:"), 0, 0)
-        self.mac_value = QLabel(self.controller_mac.hex())
-        self.mac_value.setStyleSheet("color: #5a6675;")
-        info_grid.addWidget(self.mac_value, 0, 1)
-
-        info_grid.addWidget(QLabel("IP:"), 1, 0)
-        self.ip_value = QLabel("-")
-        self.ip_value.setStyleSheet("color: #5a6675;")
-        info_grid.addWidget(self.ip_value, 1, 1)
-
-        info_grid.addWidget(QLabel("Latency:"), 2, 0)
-        self.latency_value = QLabel("-")
-        self.latency_value.setStyleSheet("color: #5a6675;")
-        info_grid.addWidget(self.latency_value, 2, 1)
-        
-        info_grid.addWidget(QLabel("Data rate:"), 3, 0)
-        self.data_rate_value = QLabel("-")
-        self.data_rate_value.setStyleSheet("color: #5a6675;")
-        info_grid.addWidget(self.data_rate_value, 3, 1)
-        
-        info_grid.setColumnStretch(2, 1)
-        content_row.addLayout(info_grid, 0)
-
-        actions = QVBoxLayout()
-        actions.setSpacing(4)
+        self.status_value = QLabel()
+        self.status_value.setStyleSheet("color: #5a6675;")
+        bottom_row.addWidget(self.status_value)
+        bottom_row.addStretch(1)
 
         self.rezero_button = QPushButton("Re-zero")
         self.rezero_button.clicked.connect(self.state.re_zero)
-        actions.addWidget(self.rezero_button)
+        bottom_row.addWidget(self.rezero_button)
 
-        self.mute_button = QPushButton("Mute")
-        self.mute_button.setCheckable(True)
-        self.mute_button.toggled.connect(self._on_mute_toggled)
-        actions.addWidget(self.mute_button)
-
-        self.visualise_button = QPushButton("Visualise")
-        self.visualise_button.clicked.connect(lambda: self.visualise_requested.emit(self.controller_mac))
-        actions.addWidget(self.visualise_button)
-        actions.addStretch(1)
-
-        content_row.addLayout(actions, 0)
-        content_row.addStretch(1)
-
-        root.addLayout(content_row)
+        root.addLayout(bottom_row)
         self.refresh_from_state()
 
     def mousePressEvent(self, a0):
@@ -184,7 +154,7 @@ class ControllerCard(QFrame):
     def _on_mute_toggled(self, checked: bool):
         set_controller_muted(self.controller_mac, checked)
         self.state.set_muted(checked)
-        self.mute_button.setText("Muted" if checked else "Mute")
+        self.mute_button.setToolTip("Unmute controller" if checked else "Mute controller")
 
     def set_focused(self, focused: bool):
         self._focused = focused
@@ -217,24 +187,31 @@ class ControllerCard(QFrame):
             self.channel_combo.blockSignals(False)
 
     def set_ip(self, ip_addr: str):
-        self.ip_value.setText(ip_addr or "-")
+        _ = ip_addr
 
     def set_latency_ms(self, latency_ms: float | None):
-        if latency_ms is None:
-            self.latency_value.setText("-")
-            return
-        self.latency_value.setText(f"{latency_ms:.1f} ms")
+        self._latency_ms = latency_ms
+        self._refresh_status_line()
         
     def set_data_rate(self, rate_hz: float | None):
-        if rate_hz is None:
-            self.data_rate_value.setText("-")
-            return
-        self.data_rate_value.setText(f"{rate_hz} Hz")
+        self._data_rate_hz = rate_hz
+        self._refresh_status_line()
+
+    def _refresh_status_line(self):
+        data_rate_text = "-"
+        if self._data_rate_hz is not None:
+            data_rate_text = f"{self._data_rate_hz} Hz"
+
+        latency_text = "-"
+        if self._latency_ms is not None:
+            latency_text = f"{self._latency_ms:.1f} ms"
+
+        self.status_value.setText(f"Data rate: {data_rate_text}\tLatency: {latency_text}")
 
     def set_muted(self, muted: bool):
         self.mute_button.blockSignals(True)
         self.mute_button.setChecked(muted)
-        self.mute_button.setText("Muted" if muted else "Mute")
+        self.mute_button.setToolTip("Unmute controller" if muted else "Mute controller")
         self.mute_button.blockSignals(False)
 
     def refresh_from_state(self):

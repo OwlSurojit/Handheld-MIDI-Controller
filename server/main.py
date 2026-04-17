@@ -55,6 +55,7 @@ def main():
         # For this iteration, we pass the get_controllers function.
         launch_ui(
             provisioning_service=provisioning_service,
+            communication_thread=recv_thread,
         )
     else:
         # If no UI, just wait for Ctrl+C

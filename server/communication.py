@@ -17,6 +17,7 @@ DISCOVERY_REQUEST = 0x01
 DISCOVERY_RESPONSE = 0x02
 SENSOR_DATA = 0x03
 HAPTIC_FEEDBACK = 0x04
+IDENTIFY_REQUEST = 0x05
 LATENCY_CHECK = 0xFF
 
 # Discovery request: type + 6 bytes MAC
@@ -30,6 +31,10 @@ _SENSOR_DATA_SIZE = struct.calcsize(_SENSOR_DATA_FORMAT)
 # Haptic feedback: type + 1 byte mode + 4 bytes duration_ms
 _HAPTIC_FEEDBACK_FORMAT = '<BBI'
 _HAPTIC_FEEDBACK_SIZE = struct.calcsize(_HAPTIC_FEEDBACK_FORMAT)
+
+# Identify request: single type byte
+_IDENTIFY_REQUEST_FORMAT = '<B'
+_IDENTIFY_REQUEST_SIZE = struct.calcsize(_IDENTIFY_REQUEST_FORMAT)
 
 # Latency packet: type + 6 bytes MAC + timestamp
 _LATENCY_PACKET_FORMAT = '<B6sI'
@@ -73,6 +78,7 @@ class CommunicationThread(threading.Thread):
         self.num_packets_per_controller: dict[bytes, int] = {}
         self.pending_latency: dict[bytes, tuple[int, float]] = {}
         self._haptic_commands: Queue[_HapticCommand] = Queue(maxsize=256)
+        self._identify_requests: Queue[bytes] = Queue(maxsize=16)
         self.provisioning_service = provisioning_service
 
     def _create_socket(self) -> socket.socket:
@@ -112,6 +118,32 @@ class CommunicationThread(threading.Thread):
             packet = struct.pack(_HAPTIC_FEEDBACK_FORMAT, HAPTIC_FEEDBACK, cmd.command, cmd.duration_ms)
             sock.sendto(packet, (state.source_ip, self.udp_port))
             print(f"Sent haptic command to {state.source_ip} for controller {cmd.controller_mac.hex()} with command {cmd.command} and duration {cmd.duration_ms}ms")
+
+    def send_identify(self, controller_mac: bytes) -> bool:
+        """Queue an identify request packet for a specific controller."""
+        if not isinstance(controller_mac, (bytes, bytearray)) or len(controller_mac) != 6:
+            return False
+        try:
+            self._identify_requests.put_nowait(bytes(controller_mac))
+            return True
+        except Full:
+            print("Identify request queue is full; dropping request.")
+            return False
+
+    def _flush_identify_requests(self, sock: socket.socket, max_batch: int = 16) -> None:
+        for _ in range(max_batch):
+            try:
+                controller_mac = self._identify_requests.get_nowait()
+            except Empty:
+                break
+
+            state = get_controller(controller_mac)
+            if state is None or not state.source_ip:
+                continue
+
+            packet = struct.pack(_IDENTIFY_REQUEST_FORMAT, IDENTIFY_REQUEST)
+            sock.sendto(packet, (state.source_ip, self.udp_port))
+            print(f"Sent identify request to {state.source_ip} for controller {controller_mac.hex()}")
 
     def _handle_discovery_request(self, raw: bytes, addr: tuple[str, int], sock: socket.socket) -> None:
         _, mac = struct.unpack(_DISCOVERY_REQUEST_FORMAT, raw)
@@ -189,6 +221,7 @@ class CommunicationThread(threading.Thread):
         try:
             while not self.stop_event.is_set():
                 self._flush_haptic_commands(sock)
+                self._flush_identify_requests(sock)
                 if self.provisioning_service:
                     self.provisioning_service.flush_pending(sock, self.udp_port)
                 try:

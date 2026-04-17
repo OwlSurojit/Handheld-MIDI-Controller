@@ -64,6 +64,7 @@ enum PacketType : uint8_t {
     DISCOVERY_RESPONSE = 0x02, // Server responds with its IP
     SENSOR_DATA = 0x03,        // Normal sensor data
     HAPTIC_FEEDBACK = 0x04,    // Haptic feedback command
+    IDENTIFY_REQUEST = 0x05,   // Host triggers a short identify vibration
     LATENCY_CHECK = 0xFF       // Latency test echo packet
 };
 
@@ -92,6 +93,10 @@ struct __attribute__((packed)) HapticFeedbackPacket {
     uint8_t type;         // HAPTIC_FEEDBACK
     uint8_t command;      // Simple command byte to indicate haptic pattern
     uint32_t duration_ms; // Duration for the haptic feedback
+};
+
+struct __attribute__((packed)) IdentifyRequestPacket {
+    uint8_t type; // IDENTIFY_REQUEST
 };
 
 // Small latency check packet for echo-back latency measurement
@@ -230,6 +235,16 @@ void handleHapticFeedback() {
     }
 }
 
+void handleIdentifyRequest() {
+    IdentifyRequestPacket identifyPacket;
+    udp.read((uint8_t *)&identifyPacket, sizeof(IdentifyRequestPacket));
+    if (identifyPacket.type != IDENTIFY_REQUEST) {
+        return;
+    }
+
+    pulseHaptic(90, 60, 2);
+}
+
 unsigned long buttonHeldSince = 0;
 
 void loop() {
@@ -286,6 +301,8 @@ void loop() {
             handleLatencyPing();
         } else if (type == HAPTIC_FEEDBACK && packetSize == sizeof(HapticFeedbackPacket)) {
             handleHapticFeedback();
+        } else if (type == IDENTIFY_REQUEST && packetSize == sizeof(IdentifyRequestPacket)) {
+            handleIdentifyRequest();
         } else {
             // Unknown packet type or size, ignore
             uint8_t buffer[packetSize];

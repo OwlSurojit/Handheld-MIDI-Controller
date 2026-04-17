@@ -490,6 +490,17 @@ def set_controller_midi_channel(controller_mac: bytes | str, midi_channel: int) 
     return update_config(_controller_path(mac_key) + ["midi_channel"], midi_channel)
 
 
+def remove_controller_entry(controller_mac: bytes | str) -> int:
+    mac_key = _mac_key(controller_mac)
+    with _lock:
+        config = get_config()
+        controllers_cfg = config.setdefault("controllers", {})
+        controllers_cfg.pop(mac_key, None)
+        version = _bump_version_locked()
+    _notify_subscribers(version)
+    return version
+
+
 def update_controller_override(controller_mac: bytes | str, path: List[str], value: Any) -> int:
     mac_key = _mac_key(controller_mac)
     return update_config(_controller_path(mac_key) + path, value)

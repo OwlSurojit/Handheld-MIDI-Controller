@@ -1,9 +1,9 @@
 from PyQt5.QtCore import QEvent, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QPalette
-from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtGui import QColor, QKeySequence, QPalette
+from PyQt5.QtWidgets import QAbstractItemView, QAction, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QVBoxLayout, QWidget, QWidgetAction
 
-from server.config import get_controller_entry
-from server.shared_state import controllers, register_controller_removed_callback, register_new_controller_callback
+from server.config import get_controller_entry, remove_controller_entry
+from server.shared_state import controllers, register_controller_removed_callback, register_new_controller_callback, remove_controller
 from server.ui.widgets.controller_card import ControllerCard
 
 
@@ -14,6 +14,7 @@ class ControllerListWidget(QWidget):
     mute_selected_requested = pyqtSignal()
     unmute_selected_requested = pyqtSignal()
     rezero_selected_requested = pyqtSignal()
+    identify_requested = pyqtSignal(bytes)
     setup_wizard_requested = pyqtSignal()
     new_controller_signal = pyqtSignal(object)
     controller_removed_signal = pyqtSignal(object)
@@ -22,6 +23,7 @@ class ControllerListWidget(QWidget):
         super().__init__(parent)
         self._cards: dict[bytes, ControllerCard] = {}
         self._items: dict[bytes, QListWidgetItem] = {}
+        self._controller_order: list[bytes] = []
         self._syncing_selection = False
         
         layout = QVBoxLayout(self)
@@ -42,6 +44,7 @@ class ControllerListWidget(QWidget):
         
         self.list_widget = QListWidget()
         self.list_widget.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.list_widget.setSpacing(2)
         # Keep native selection mechanics but suppress default rectangular highlight
@@ -56,6 +59,7 @@ class ControllerListWidget(QWidget):
         )
         self.list_widget.itemSelectionChanged.connect(self._on_item_selection_changed)
         self.list_widget.currentItemChanged.connect(self._on_current_item_changed)
+        self.list_widget.customContextMenuRequested.connect(self._open_context_menu)
         self._list_viewport = self.list_widget.viewport()
         if self._list_viewport is not None:
             self._list_viewport.installEventFilter(self)
@@ -123,6 +127,100 @@ class ControllerListWidget(QWidget):
         self.refresh_timer.start()
 
         self.rebuild()
+        self._build_shortcuts()
+
+    def _build_shortcuts(self):
+        def _add_action(text: str, shortcut: str, slot):
+            action = QAction(text, self)
+            action.setShortcut(QKeySequence(shortcut))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            action.triggered.connect(slot)
+            self.addAction(action)
+            return action
+
+        self.details_action = _add_action("Details", "Ctrl+D", self.show_details_for_context)
+        self.identify_action = _add_action("Identify", "Ctrl+I", self.identify_context_controller)
+        self.visualise_action = _add_action("Visualise", "Ctrl+Shift+V", self.visualise_context_controller)
+        self.move_up_action = _add_action("Move up", "Alt+Up", self.move_context_controller_up)
+        self.move_down_action = _add_action("Move down", "Alt+Down", self.move_context_controller_down)
+        self.remove_action = _add_action("Remove", "Delete", self.remove_context_controller)
+
+    def _context_target_mac(self) -> bytes | None:
+        focused = self.focused_controller
+        if focused in self._items:
+            return focused
+        selected = self.selected_controller_ids()
+        if selected:
+            return next(iter(selected))
+        return None
+
+    def _show_details(self, mac: bytes) -> None:
+        state = controllers.get(mac)
+        if state is None:
+            return
+        name = state.get_name().strip() or f"Controller {state.midi_channel}"
+        mac_text = mac.hex()
+        ip_text = state.source_ip or "-"
+        QMessageBox.information(self, f"{name} Details", f"MAC: {mac_text}\nIP: {ip_text}")
+
+    def show_details_for_context(self):
+        mac = self._context_target_mac()
+        if mac is not None:
+            self._show_details(mac)
+
+    def identify_context_controller(self):
+        mac = self._context_target_mac()
+        if mac is not None:
+            self.identify_requested.emit(mac)
+
+    def visualise_context_controller(self):
+        mac = self._context_target_mac()
+        if mac is not None:
+            self.visualise_requested.emit(mac)
+
+    def _move_controller_by(self, mac: bytes, delta: int):
+        if mac not in self._controller_order:
+            return
+        old_index = self._controller_order.index(mac)
+        new_index = old_index + delta
+        if new_index < 0 or new_index >= len(self._controller_order):
+            return
+        self._controller_order[old_index], self._controller_order[new_index] = self._controller_order[new_index], self._controller_order[old_index]
+        self.rebuild()
+        self.set_focused_controller(mac)
+
+    def move_context_controller_up(self):
+        mac = self._context_target_mac()
+        if mac is not None:
+            self._move_controller_by(mac, -1)
+
+    def move_context_controller_down(self):
+        mac = self._context_target_mac()
+        if mac is not None:
+            self._move_controller_by(mac, 1)
+
+    def _confirm_remove(self, mac: bytes) -> bool:
+        state = controllers.get(mac)
+        if state is None:
+            return False
+        display_name = state.get_name().strip() or f"Controller {state.midi_channel}"
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("Remove Controller")
+        dialog.setText(f"Remove {display_name} ({mac.hex()}) from this session and config?")
+        remove_button = dialog.addButton("Remove", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton(QMessageBox.StandardButton.Cancel)
+        dialog.exec_()
+        return dialog.clickedButton() is remove_button
+
+    def remove_context_controller(self):
+        mac = self._context_target_mac()
+        if mac is None:
+            return
+        if not self._confirm_remove(mac):
+            return
+        remove_controller_entry(mac)
+        remove_controller(mac)
 
     def eventFilter(self, a0, a1):
         if a0 is self._list_viewport and a1 is not None and a1.type() in (QEvent.Type.Resize, QEvent.Type.Show) and self._list_viewport is not None:
@@ -193,7 +291,59 @@ class ControllerListWidget(QWidget):
         self.refresh_visible_cards()
 
     def _on_controller_removed(self, mac):
+        if mac in self._controller_order:
+            self._controller_order = [item for item in self._controller_order if item != mac]
         self.rebuild()
+
+    def _ordered_controller_macs(self) -> list[bytes]:
+        if not self._controller_order:
+            self._controller_order = sorted(controllers.keys())
+            return list(self._controller_order)
+
+        live = set(controllers.keys())
+        ordered = [mac for mac in self._controller_order if mac in live]
+        missing = sorted(live - set(ordered))
+        ordered.extend(missing)
+        self._controller_order = ordered
+        return list(self._controller_order)
+
+    def _open_context_menu(self, pos):
+        item = self.list_widget.itemAt(pos)
+        if item is None:
+            return
+
+        mac = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(mac, bytes):
+            return
+
+        self._syncing_selection = True
+        if not item.isSelected():
+            self.list_widget.clearSelection()
+            item.setSelected(True)
+        self.list_widget.setCurrentItem(item)
+        self._syncing_selection = False
+        self.refresh_visible_cards()
+        self.selection_changed.emit()
+        self.focused_controller_changed.emit(self.focused_controller)
+
+        menu = QMenu(self)
+        title_label = QLabel(f"{controllers[mac].get_name().strip() or f'Controller {controllers[mac].midi_channel}'}")
+        title_label.setStyleSheet("font-weight: bold; padding: 4px 12px;")
+        title_action = QWidgetAction(menu)
+        title_action.setDefaultWidget(title_label)
+        menu.addAction(title_action)
+        menu.addAction(self.details_action)
+        menu.addAction(self.identify_action)
+        menu.addAction(self.visualise_action)
+        menu.addSeparator()
+        menu.addAction(self.move_up_action)
+        menu.addAction(self.move_down_action)
+        menu.addAction(self.remove_action)
+
+        viewport = self.list_widget.viewport()
+        if viewport is None:
+            return
+        menu.exec_(viewport.mapToGlobal(pos))
 
     def _on_card_clicked(self, controller_mac: bytes, modifiers, requested_checked):
         item = self._items.get(controller_mac)
@@ -264,7 +414,10 @@ class ControllerListWidget(QWidget):
         self._syncing_selection = True
         first_item = None
 
-        for mac, state in sorted(controllers.items()):
+        for mac in self._ordered_controller_macs():
+            state = controllers.get(mac)
+            if state is None:
+                continue
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, mac)
             card = ControllerCard(state)
