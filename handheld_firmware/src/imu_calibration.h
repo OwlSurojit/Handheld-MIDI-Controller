@@ -1,12 +1,10 @@
 #pragma once
 
 #include "ICM_20948.h"
-#include <EEPROM.h>
+#include "eeprom_layout.h"
+#include <stddef.h>
 #include <stdint.h>
 
-// EEPROM layout
-#define BIAS_EEPROM_SIZE 128
-#define BIAS_EEPROM_ADDR 0
 
 // How long to run before saving biases (ms). Give the DMP time to converge.
 // Move the sensor through all orientations and do figure-8s during this window.
@@ -23,11 +21,11 @@ struct biasStore {
     int32_t sum        = 0;
 };
 
-// Call once in setup() before restoring biases.
-void calibration_init();
-
 // Inject previously saved biases into the DMP. Call after DMP is fully started.
 void restoreBiasesFromFlash(ICM_20948 &icm);
 
 // Read current DMP biases and write them to flash. Call after calibration has converged.
 void saveBiasesToFlash(ICM_20948 &icm);
+
+// Delete any saved biases from flash. Call before rebooting if you want to clear saved calibration.
+void deleteStoredBiases();

@@ -25,10 +25,6 @@ static bool readBiasesFromDMP(ICM_20948 &icm, biasStore *s) {
     return ok;
 }
 
-void calibration_init() {
-    EEPROM.begin(BIAS_EEPROM_SIZE);
-}
-
 void restoreBiasesFromFlash(ICM_20948 &icm) {
     biasStore s;
     EEPROM.get(BIAS_EEPROM_ADDR, s);
@@ -55,4 +51,11 @@ void saveBiasesToFlash(ICM_20948 &icm) {
     EEPROM.put(BIAS_EEPROM_ADDR, s);
     EEPROM.commit();
     Serial.println("Calibration biases saved to flash.");
+}
+
+void deleteStoredBiases() {
+    biasStore s; // Initialized to all zeros, which is invalid
+    EEPROM.put(BIAS_EEPROM_ADDR, s);
+    EEPROM.commit();
+    Serial.println("Stored calibration biases deleted from flash.");
 }

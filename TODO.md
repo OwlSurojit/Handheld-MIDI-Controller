@@ -17,6 +17,12 @@
   - Make Controller cards more compact and flex list (grid / horizontal / ...); context menu for details, remove, etc
   - grey out inactive controllers
   - Bulk apply config   DONE
+- PROVISIONING
+  - detect if there is a wired connection --> don't select current wifi in step 2
+  - Prevent constant rescan to keep selecting all controllers   DONE
+  - verify SSID and pass before sending it to everyone?
+- identify controller button
 
 # BUGS
 - Every now and again there is a massive random spike in accel or gyro data --> maybe we will need to bring back some kind of filter...
+- The default-set controller names (Controller #n) should not be stored to presets, so that when loading a preset the numbers shouldn't change, that is weird

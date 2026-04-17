@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from queue import Empty, Full, Queue
 
 from server.config import get_config
+from server.provisioning_service import ProvisioningService
 from server.shared_state import controllers, get_controller, has_controller
 
 # ---------------------------------------------------------------------------
@@ -34,7 +35,12 @@ _HAPTIC_FEEDBACK_SIZE = struct.calcsize(_HAPTIC_FEEDBACK_FORMAT)
 _LATENCY_PACKET_FORMAT = '<B6sI'
 _LATENCY_PACKET_SIZE = struct.calcsize(_LATENCY_PACKET_FORMAT)
 _LATENCY_CHECK_INTERVAL_SEC = 2.0
-_MAX_PACKET_SIZE = max(_SENSOR_DATA_SIZE, _DISCOVERY_REQUEST_SIZE, _LATENCY_PACKET_SIZE)
+_MAX_PACKET_SIZE = max(
+    _SENSOR_DATA_SIZE,
+    _DISCOVERY_REQUEST_SIZE,
+    _LATENCY_PACKET_SIZE,
+    ProvisioningService.max_packet_size(),
+)
 _SOCKET_TIMEOUT_SEC = 0.002
 
 
@@ -51,7 +57,13 @@ class _HapticCommand:
 class CommunicationThread(threading.Thread):
     """Background UDP sender and receiver for discovery, sensor data, and latency checks."""
 
-    def __init__(self, stop_event: threading.Event, host: str = "0.0.0.0", daemon: bool = True):
+    def __init__(
+        self,
+        stop_event: threading.Event,
+        host: str = "0.0.0.0",
+        daemon: bool = True,
+        provisioning_service: ProvisioningService | None = None,
+    ):
         super().__init__(name="communication-thread", daemon=daemon)
         self.stop_event = stop_event
         self.host = host
@@ -61,6 +73,7 @@ class CommunicationThread(threading.Thread):
         self.num_packets_per_controller: dict[bytes, int] = {}
         self.pending_latency: dict[bytes, tuple[int, float]] = {}
         self._haptic_commands: Queue[_HapticCommand] = Queue(maxsize=256)
+        self.provisioning_service = provisioning_service
 
     def _create_socket(self) -> socket.socket:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -158,6 +171,9 @@ class CommunicationThread(threading.Thread):
         if len(raw) < 1:
             return
 
+        if self.provisioning_service and self.provisioning_service.handle_packet(raw, addr):
+            return
+
         packet_type = raw[0]
 
         if packet_type == DISCOVERY_REQUEST and len(raw) == _DISCOVERY_REQUEST_SIZE:
@@ -173,6 +189,8 @@ class CommunicationThread(threading.Thread):
         try:
             while not self.stop_event.is_set():
                 self._flush_haptic_commands(sock)
+                if self.provisioning_service:
+                    self.provisioning_service.flush_pending(sock, self.udp_port)
                 try:
                     raw, addr = sock.recvfrom(_MAX_PACKET_SIZE)
                     self._handle_packet(raw, addr, sock)

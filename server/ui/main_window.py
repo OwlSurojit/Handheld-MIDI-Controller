@@ -17,7 +17,9 @@ from server.config import (
     save_to_default_path,
     set_controller_muted,
 )
+from server.provisioning_service import ProvisioningService
 from server.shared_state import controllers
+from server.ui.dialogs.provisioning_wizard import ProvisioningWizard
 from server.ui.dialogs.visualiser_window import VisualiserWindow
 import server.ui.widgets.controller_config_panel as controller_config_panel
 from server.ui.widgets.controller_list import ControllerListWidget
@@ -25,10 +27,14 @@ from server.ui.widgets.preset_manager import PresetBar
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(
+        self,
+        provisioning_service: ProvisioningService | None = None,
+    ):
         super().__init__()
         self.setWindowTitle("Handheld MIDI Controller")
         self.setGeometry(100, 100, 980, 620)
+        self.provisioning_service = provisioning_service
 
         self.visualiser_windows: dict[bytes, VisualiserWindow] = {}
 
@@ -77,6 +83,7 @@ class MainWindow(QMainWindow):
         self.controller_list.mute_selected_requested.connect(self.on_mute_selected)
         self.controller_list.unmute_selected_requested.connect(self.on_unmute_selected)
         self.controller_list.rezero_selected_requested.connect(self.on_rezero_selected)
+        self.controller_list.setup_wizard_requested.connect(self.open_provisioning_wizard)
 
         self.config_panel = controller_config_panel.ControllerConfigPanel()
         self.config_panel.setMinimumWidth(360)
@@ -100,6 +107,10 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction("Set Preset Folder...", self.preset_bar.open_set_presets_folder_dialog)
         file_menu.addAction("Quit", self.close)
+
+        controllers_menu = menu_bar.addMenu("Controllers")
+        if controllers_menu is not None:
+            controllers_menu.addAction("Controller Setup Wizard", self.open_provisioning_wizard)
 
     def closeEvent(self, a0):
         super().closeEvent(a0)
@@ -175,13 +186,27 @@ class MainWindow(QMainWindow):
         self.visualiser_windows[controller_id] = viz_win
         viz_win.show()
 
+    def open_provisioning_wizard(self):
+        provisioning_service = self.provisioning_service
+        if provisioning_service is None:
+            QMessageBox.warning(self, "Setup Unavailable", "Provisioning is unavailable: communication thread not ready.")
+            return
 
-def launch_ui():
+        wizard = ProvisioningWizard(
+            provisioning_service=provisioning_service,
+            parent=self,
+        )
+        wizard.exec_()
+
+
+def launch_ui(provisioning_service: ProvisioningService | None = None):
     aa_share_gl = getattr(Qt, "AA_ShareOpenGLContexts", None)
     if aa_share_gl is not None:
         QApplication.setAttribute(aa_share_gl, True)
     app = QApplication(sys.argv)
 
-    main_win = MainWindow()
+    main_win = MainWindow(
+        provisioning_service=provisioning_service,
+    )
     main_win.show()
     return app.exec_()

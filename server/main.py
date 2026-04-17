@@ -9,6 +9,8 @@ from server.midi_output import MIDIOutput
 from server.controller_state import ControllerState
 from server.midi_mapper import MidiMapper 
 from server.communication import CommunicationThread
+from server.provisioning_service import ProvisioningService
+from server.wifi_backend import WiFiBackend
 
 
 controllers: Dict[int, ControllerState] = {}
@@ -35,7 +37,8 @@ def main():
     )
 
     # Start the UDP receiver thread
-    recv_thread = CommunicationThread(stop_event=stop_event)
+    provisioning_service = ProvisioningService(WiFiBackend())
+    recv_thread = CommunicationThread(stop_event=stop_event, provisioning_service=provisioning_service)
     recv_thread.start()
 
     # Initialize the MIDI mapper & start the main processing loop in a separate thread
@@ -50,7 +53,9 @@ def main():
         # This will block until the UI is closed.
         # The UI will need access to the server state (controllers, config).
         # For this iteration, we pass the get_controllers function.
-        launch_ui()
+        launch_ui(
+            provisioning_service=provisioning_service,
+        )
     else:
         # If no UI, just wait for Ctrl+C
         print("Server running. Press Ctrl+C to stop.")

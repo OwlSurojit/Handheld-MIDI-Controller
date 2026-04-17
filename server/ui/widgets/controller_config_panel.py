@@ -322,7 +322,7 @@ class ControllerConfigPanel(QWidget):
         source_header.setStyleSheet("font-weight: 600;")
         headers_layout.addWidget(source_header, 2)
 
-        headers_layout.addSpacing(56)
+        headers_layout.addSpacing(91)
         self.mapping_layout.addWidget(headers_row)
 
         self.add_mapping_btn = QPushButton("Add Mapping")

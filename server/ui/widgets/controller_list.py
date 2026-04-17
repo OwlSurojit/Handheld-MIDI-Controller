@@ -1,6 +1,6 @@
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import QEvent, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QPalette
-from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QAbstractItemView, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
 
 from server.config import get_controller_entry
 from server.shared_state import controllers, register_controller_removed_callback, register_new_controller_callback
@@ -14,6 +14,7 @@ class ControllerListWidget(QWidget):
     mute_selected_requested = pyqtSignal()
     unmute_selected_requested = pyqtSignal()
     rezero_selected_requested = pyqtSignal()
+    setup_wizard_requested = pyqtSignal()
     new_controller_signal = pyqtSignal(object)
     controller_removed_signal = pyqtSignal(object)
 
@@ -38,7 +39,7 @@ class ControllerListWidget(QWidget):
         top_actions.addWidget(self.clear_button)
         top_actions.addStretch()
         layout.addLayout(top_actions)
-
+        
         self.list_widget = QListWidget()
         self.list_widget.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.list_widget.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
@@ -55,6 +56,42 @@ class ControllerListWidget(QWidget):
         )
         self.list_widget.itemSelectionChanged.connect(self._on_item_selection_changed)
         self.list_widget.currentItemChanged.connect(self._on_current_item_changed)
+        self._list_viewport = self.list_widget.viewport()
+        if self._list_viewport is not None:
+            self._list_viewport.installEventFilter(self)
+
+        self.no_controllers_setup = QWidget(self._list_viewport)
+        no_controllers_layout = QVBoxLayout(self.no_controllers_setup)
+        no_controllers_layout.setContentsMargins(20, 20, 20, 20)
+        no_controllers_layout.setSpacing(12)
+
+        no_controllers_layout.addStretch(1)
+
+        text_row = QHBoxLayout()
+        text_row.addStretch(1)
+        self.no_controllers_label = QLabel(
+            "No controllers detected. To set up your controllers on a new network, click the button below to launch the setup wizard."
+        )
+        self.no_controllers_label.setWordWrap(True)
+        self.no_controllers_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.no_controllers_label.setMaximumWidth(520)
+        text_row.addWidget(self.no_controllers_label)
+        text_row.addStretch(1)
+        no_controllers_layout.addLayout(text_row)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        self.setup_wizard_button = QPushButton("Set Up Controllers...")
+        self.setup_wizard_button.setMinimumHeight(40)
+        self.setup_wizard_button.setMinimumWidth(220)
+        self.setup_wizard_button.clicked.connect(self.setup_wizard_requested.emit)
+        button_row.addWidget(self.setup_wizard_button)
+        button_row.addStretch(1)
+        no_controllers_layout.addLayout(button_row)
+
+        no_controllers_layout.addStretch(1)
+        self.no_controllers_setup.hide()
+
         layout.addWidget(self.list_widget)
 
         bottom_actions = QHBoxLayout()
@@ -86,6 +123,11 @@ class ControllerListWidget(QWidget):
         self.refresh_timer.start()
 
         self.rebuild()
+
+    def eventFilter(self, a0, a1):
+        if a0 is self._list_viewport and a1 is not None and a1.type() in (QEvent.Type.Resize, QEvent.Type.Show) and self._list_viewport is not None:
+            self.no_controllers_setup.setGeometry(self._list_viewport.rect())
+        return super().eventFilter(a0, a1)
 
     @property
     def focused_controller(self) -> bytes | None:
@@ -209,12 +251,15 @@ class ControllerListWidget(QWidget):
         self._items.clear()
 
         if not controllers:
-            empty_item = QListWidgetItem("No controllers detected.")
-            empty_item.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.list_widget.addItem(empty_item)
+            if self._list_viewport is not None:
+                self.no_controllers_setup.setGeometry(self._list_viewport.rect())
+            self.no_controllers_setup.show()
+            self._update_empty_state_actions()
             self.focused_controller_changed.emit(None)
             self.selection_changed.emit()
             return
+
+        self.no_controllers_setup.hide()
 
         self._syncing_selection = True
         first_item = None
@@ -247,8 +292,17 @@ class ControllerListWidget(QWidget):
         self._syncing_selection = False
 
         self.refresh_visible_cards()
+        self._update_empty_state_actions()
         self.selection_changed.emit()
         self.focused_controller_changed.emit(self.focused_controller)
+
+    def _update_empty_state_actions(self):
+        has_controllers = bool(controllers)
+        self.select_all_button.setEnabled(has_controllers)
+        self.clear_button.setEnabled(has_controllers)
+        self.mute_selected_button.setEnabled(has_controllers)
+        self.unmute_selected_button.setEnabled(has_controllers)
+        self.rezero_selected_button.setEnabled(has_controllers)
 
     def refresh_visible_cards(self):
         focused = self.focused_controller
