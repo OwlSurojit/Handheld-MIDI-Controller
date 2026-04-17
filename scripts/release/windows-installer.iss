@@ -7,7 +7,7 @@
 #define AppExeName "HandheldMIDI.exe"
 
 [Setup]
-AppId={D6F1546D-2B90-4CE1-B4F0-6E2EE49BFF0F}
+AppId={{65AC3E69-372E-4873-8683-2DFF4FFD75F7}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
