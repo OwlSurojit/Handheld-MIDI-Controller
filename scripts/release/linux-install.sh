@@ -9,7 +9,7 @@ cp -R HandheldMIDI/* "${INSTALL_ROOT}/"
 
 cat > "${BIN_DIR}/handheld-midi" <<'EOF'
 #!/usr/bin/env bash
-exec "${HOME}/.local/opt/HandheldMIDI/HandheldMIDI" --ui "$@"
+exec "${HOME}/.local/opt/HandheldMIDI/HandheldMIDI" "$@"
 EOF
 
 chmod +x "${BIN_DIR}/handheld-midi"

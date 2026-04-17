@@ -6,7 +6,7 @@ This repository uses a tag-driven GitHub Actions workflow at `.github/workflows/
 
 - Windows: Inno Setup installer (`.exe`)
 - macOS: DMG package (`.dmg`)
-- Linux: tar.gz package with installer script (`.tar.gz`)
+- Linux: AppImage (`.AppImage`) and tar.gz package with installer script (`.tar.gz`)
 
 ## Triggering a production build
 
@@ -40,9 +40,10 @@ scripts/release/package_macos.sh
 ### Linux
 
 ```bash
-chmod +x scripts/release/build_linux.sh scripts/release/package_linux.sh scripts/release/linux-install.sh
+chmod +x scripts/release/build_linux.sh scripts/release/package_linux.sh scripts/release/package_appimage.sh scripts/release/linux-install.sh
 scripts/release/build_linux.sh
 scripts/release/package_linux.sh
+scripts/release/package_appimage.sh
 ```
 
 ## Runtime dependency notes
@@ -54,4 +55,4 @@ scripts/release/package_linux.sh
 
 - Add code signing for Windows installer.
 - Add macOS signing and notarization.
-- Replace Linux tar.gz with AppImage or distro-specific package(s) if needed.
+- Add distro-specific Linux packages (`.deb`/`.rpm`) if needed.

@@ -22,7 +22,7 @@ Install:
 ./install.sh
 
 Run:
-~/.local/opt/HandheldMIDI/HandheldMIDI --ui
+~/.local/opt/HandheldMIDI/HandheldMIDI
 EOF
 
 tar -czf "${ARCHIVE}" -C "${OUT_DIR}" .

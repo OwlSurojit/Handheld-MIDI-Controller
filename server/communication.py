@@ -40,6 +40,7 @@ _IDENTIFY_REQUEST_SIZE = struct.calcsize(_IDENTIFY_REQUEST_FORMAT)
 _LATENCY_PACKET_FORMAT = '<B6sI'
 _LATENCY_PACKET_SIZE = struct.calcsize(_LATENCY_PACKET_FORMAT)
 _LATENCY_CHECK_INTERVAL_SEC = 2.0
+_NS_PER_MS = 1_000_000.0
 _MAX_PACKET_SIZE = max(
     _SENSOR_DATA_SIZE,
     _DISCOVERY_REQUEST_SIZE,
@@ -76,7 +77,8 @@ class CommunicationThread(threading.Thread):
         self.last_data_rate_update = time.monotonic()
         self.next_latency_check = time.monotonic() + _LATENCY_CHECK_INTERVAL_SEC
         self.num_packets_per_controller: dict[bytes, int] = {}
-        self.pending_latency: dict[bytes, tuple[int, float]] = {}
+        # Store timestamp echo token plus a high-resolution send timestamp.
+        self.pending_latency: dict[bytes, tuple[int, int]] = {}
         self._haptic_commands: Queue[_HapticCommand] = Queue(maxsize=256)
         self._identify_requests: Queue[bytes] = Queue(maxsize=16)
         self.provisioning_service = provisioning_service
@@ -157,9 +159,9 @@ class CommunicationThread(threading.Thread):
         if mac not in self.pending_latency:
             return
 
-        pending_ts, sent_time = self.pending_latency.get(mac, (None, None))
-        if pending_ts == ts and sent_time is not None and has_controller(mac):
-            rtt_ms = max((time.monotonic() - sent_time) * 1000.0, 0.0)
+        pending_ts, sent_ns = self.pending_latency.get(mac, (None, None))
+        if pending_ts == ts and sent_ns is not None and has_controller(mac):
+            rtt_ms = max((time.perf_counter_ns() - sent_ns) / _NS_PER_MS, 0.0)
             one_way_ms = rtt_ms * 0.5
             get_controller(mac, addr[0]).set_one_way_latency_ms(one_way_ms)
 
@@ -186,8 +188,9 @@ class CommunicationThread(threading.Thread):
             if not state.source_ip:
                 continue
             latency_packet = struct.pack(_LATENCY_PACKET_FORMAT, LATENCY_CHECK, mac, mono_ms)
+            sent_ns = time.perf_counter_ns()
             sock.sendto(latency_packet, (state.source_ip, self.udp_port))
-            self.pending_latency[mac] = (mono_ms, now)
+            self.pending_latency[mac] = (mono_ms, sent_ns)
 
     def _update_data_rates(self, now: float) -> None:
         if now - self.last_data_rate_update < 1.0:

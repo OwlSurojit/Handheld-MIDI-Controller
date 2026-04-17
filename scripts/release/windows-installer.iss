@@ -31,8 +31,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "..\..\dist\HandheldMIDI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Handheld MIDI Controller"; Filename: "{app}\{#AppExeName}"; Parameters: "--ui"
-Name: "{autodesktop}\Handheld MIDI Controller"; Filename: "{app}\{#AppExeName}"; Parameters: "--ui"; Tasks: desktopicon
+Name: "{group}\Handheld MIDI Controller"; Filename: "{app}\{#AppExeName}"
+Name: "{autodesktop}\Handheld MIDI Controller"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Parameters: "--ui"; Description: "Launch Handheld MIDI Controller"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Launch Handheld MIDI Controller"; Flags: nowait postinstall skipifsilent

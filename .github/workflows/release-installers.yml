@@ -46,8 +46,18 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          chmod +x scripts/release/build_linux.sh scripts/release/package_linux.sh scripts/release/linux-install.sh
+          chmod +x scripts/release/build_linux.sh scripts/release/package_linux.sh scripts/release/package_appimage.sh scripts/release/linux-install.sh
           scripts/release/build_linux.sh
+
+      - name: Setup Linux AppImage tooling
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
+          mkdir -p tools
+          curl -L -o tools/appimagetool-x86_64.AppImage https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x tools/appimagetool-x86_64.AppImage
 
       - name: Package Windows installer
         if: runner.os == 'Windows'
@@ -68,6 +78,12 @@ jobs:
         run: |
           scripts/release/package_linux.sh
 
+      - name: Package Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          scripts/release/package_appimage.sh
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -76,6 +92,7 @@ jobs:
             dist/*.exe
             dist/*.dmg
             dist/*.tar.gz
+            dist/*.AppImage
           if-no-files-found: error
 
   publish:
