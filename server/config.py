@@ -1,30 +1,84 @@
 import copy
 import os
+import shutil
 import threading
 import yaml
 from typing import Any, Callable, Dict, List, Tuple
 
 from server.config_consts import DEFAULT_CONFIG, DEFAULT_APP_SETTINGS
+from server.runtime_paths import get_resource_path, get_user_data_dir
 
 
 
 
 _config: Dict[str, Any] = {}
-_config_path = "config.yaml"
+_USER_DATA_DIR = get_user_data_dir()
+_BUNDLED_CONFIG_PATH = get_resource_path(os.path.join("server", "config.yaml"))
+_config_path = os.path.join(_USER_DATA_DIR, "config.yaml")
 _app_settings: Dict[str, Any] = {}
-_app_settings_path = os.path.join("server", "app_settings.yaml")
+_app_settings_path = os.path.join(_USER_DATA_DIR, "app_settings.yaml")
 _lock = threading.RLock()
 _version = 0
 _subscribers: List[Callable[[int], None]] = []
 
 
 def _resolve_config_path(path: str) -> str:
-    if os.path.exists(path):
-        return path
-    fallback = os.path.join("server", path)
-    if os.path.exists(fallback):
-        return fallback
-    raise FileNotFoundError(f"Configuration file not found at {path} or {fallback}")
+    candidates: List[str] = []
+
+    if path:
+        candidates.append(path)
+        if not os.path.isabs(path):
+            candidates.append(os.path.join(_USER_DATA_DIR, path))
+            candidates.append(os.path.join("server", path))
+
+    if os.path.basename(path) == "config.yaml":
+        candidates.insert(0, _config_path)
+        candidates.append(_BUNDLED_CONFIG_PATH)
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+
+    raise FileNotFoundError(
+        "Configuration file not found. Looked in: " + ", ".join(dict.fromkeys(candidates))
+    )
+
+
+def _default_presets_directory() -> str:
+    return os.path.join(_USER_DATA_DIR, "presets")
+
+
+def _normalize_presets_directory(path: str | None) -> str:
+    if not path:
+        return _default_presets_directory()
+
+    normalized = os.path.normpath(path)
+    if os.path.isabs(normalized):
+        return normalized
+
+    if normalized.startswith(f"server{os.sep}") or normalized == "server/presets":
+        return _default_presets_directory()
+
+    return os.path.join(_USER_DATA_DIR, normalized)
+
+
+def _ensure_user_files() -> None:
+    os.makedirs(_USER_DATA_DIR, exist_ok=True)
+
+    if not os.path.exists(_config_path):
+        if os.path.exists(_BUNDLED_CONFIG_PATH):
+            shutil.copy2(_BUNDLED_CONFIG_PATH, _config_path)
+        else:
+            with open(_config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(DEFAULT_CONFIG, f, sort_keys=False)
+
+    if not os.path.exists(_app_settings_path):
+        initial = dict(DEFAULT_APP_SETTINGS)
+        initial["presets_directory"] = _default_presets_directory()
+        with open(_app_settings_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(initial, f, sort_keys=False)
+
+    os.makedirs(_default_presets_directory(), exist_ok=True)
 
 
 def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -190,6 +244,8 @@ def _load_app_settings() -> Dict[str, Any]:
     if _app_settings:
         return _app_settings
 
+    _ensure_user_files()
+
     if os.path.exists(_app_settings_path):
         with open(_app_settings_path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
@@ -197,6 +253,7 @@ def _load_app_settings() -> Dict[str, Any]:
         raw = {}
 
     _app_settings = _deep_merge(DEFAULT_APP_SETTINGS, raw)
+    _app_settings["presets_directory"] = _normalize_presets_directory(_app_settings.get("presets_directory"))
     return _app_settings
 
 
@@ -227,6 +284,7 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def load_config(path: str = "config.yaml") -> None:
     global _config, _config_path
+    _ensure_user_files()
     resolved_path = _resolve_config_path(path)
     with open(resolved_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
@@ -236,6 +294,7 @@ def load_config(path: str = "config.yaml") -> None:
 
 def initialize(path: str = "config.yaml") -> None:
     with _lock:
+        _ensure_user_files()
         load_config(path)
         _load_app_settings()
         version = _bump_version_locked()
@@ -246,7 +305,9 @@ def save_config(path: str | None = None) -> str:
     global _config_path
     if not _config:
         load_config(path or _config_path)
-    target = path or _config_path
+    target = os.path.normpath(path) if path else _config_path
+    if target and not os.path.isabs(target):
+        target = os.path.join(_USER_DATA_DIR, target)
     os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
     with open(target, "w", encoding="utf-8") as f:
         yaml.safe_dump(_config, f, sort_keys=False)
@@ -350,7 +411,7 @@ def import_config_from_file(path: str, replace: bool = True) -> int:
 
 
 def set_presets_directory(path: str) -> int:
-    normalized = os.path.normpath(path)
+    normalized = _normalize_presets_directory(path)
     os.makedirs(normalized, exist_ok=True)
     with _lock:
         settings = _load_app_settings()
@@ -363,7 +424,9 @@ def set_presets_directory(path: str) -> int:
 
 def get_presets_directory() -> str:
     with _lock:
-        directory = _load_app_settings().get("presets_directory", DEFAULT_APP_SETTINGS["presets_directory"])
+        directory = _normalize_presets_directory(
+            _load_app_settings().get("presets_directory", DEFAULT_APP_SETTINGS["presets_directory"])
+        )
     os.makedirs(directory, exist_ok=True)
     return directory
 
@@ -408,7 +471,7 @@ def load_preset(name: str) -> int:
 
 
 def load_default_config() -> int:
-    default_path = _resolve_config_path("config.yaml")
+    default_path = _BUNDLED_CONFIG_PATH if os.path.exists(_BUNDLED_CONFIG_PATH) else _config_path
     return import_config_from_file(default_path, replace=True)
 
 

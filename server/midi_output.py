@@ -10,6 +10,8 @@ class MIDIOutput:
         self._port_name = port_name
         self._backend = backend
         self._port_open = False
+        self._connected_port_name = ""
+        self._last_error = ""
         self._setup_midi()
 
     def _setup_midi(self):
@@ -27,21 +29,55 @@ class MIDIOutput:
             self._setup_unix()
 
     def _setup_windows(self):
-        """On Windows, we can't create a virtual port. We must connect to an existing one."""
+        """On Windows, connect to preferred port when available, otherwise fall back safely."""
         available_ports = self.midi_out.get_ports()
-        print(available_ports)
-        for idx, name in enumerate(available_ports):
-            if self._port_name in name:
-                self.midi_out.open_port(idx)
-                self._port_open = True
-                print(f"Connected to MIDI port: '{name}'")
-                return
-        print("Error: Could not find loopMIDI port '{}'. Available ports are:".format(self._port_name))
-        for idx, name in enumerate(available_ports):
-            print(f"  {idx}: {name}")
-        print("Please install loopMIDI and create a port with that name.")
-        # We don't exit, just operate without MIDI.
+        print(f"Available MIDI ports: {available_ports}")
+
+        preferred = self._find_matching_port(available_ports, self._port_name)
+        if preferred is not None:
+            self._open_port(preferred, available_ports[preferred])
+            return
+
+        if available_ports:
+            fallback_index = 0
+            fallback_name = available_ports[fallback_index]
+            self._open_port(fallback_index, fallback_name)
+            print(
+                "Warning: Preferred MIDI port '{}' not found. Falling back to '{}'".format(
+                    self._port_name,
+                    fallback_name,
+                )
+            )
+            return
+
+        self._last_error = (
+            "No Windows MIDI output ports were detected. Install and configure a loopback MIDI driver "
+            "(for example loopMIDI or teVirtualMIDI) or connect a hardware MIDI output."
+        )
+        print(f"Error: {self._last_error}")
         self._port_open = False
+
+    def _find_matching_port(self, available_ports, target_name):
+        if not target_name:
+            return None
+
+        target_lower = target_name.lower()
+        for idx, name in enumerate(available_ports):
+            if name.lower() == target_lower:
+                return idx
+
+        for idx, name in enumerate(available_ports):
+            if target_lower in name.lower():
+                return idx
+
+        return None
+
+    def _open_port(self, index, name):
+        self.midi_out.open_port(index)
+        self._port_open = True
+        self._connected_port_name = name
+        self._last_error = ""
+        print(f"Connected to MIDI port: '{name}'")
 
     def _setup_unix(self):
         """On Linux/macOS, we can create a virtual port."""
@@ -74,3 +110,15 @@ class MIDIOutput:
             self._port_open = False
             print("MIDI port closed.")
         del self.midi_out
+
+    @property
+    def is_connected(self):
+        return self._port_open
+
+    @property
+    def connected_port_name(self):
+        return self._connected_port_name
+
+    @property
+    def last_error(self):
+        return self._last_error

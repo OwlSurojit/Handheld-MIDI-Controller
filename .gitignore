@@ -2,3 +2,6 @@
 *.pdf
 __pycache__
 linux_env
+build
+dist
+*.spec.bak

@@ -1,0 +1,95 @@
+name: Release Installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-22.04]
+
+    env:
+      APP_VERSION: ${{ github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/release/build_windows.ps1
+
+      - name: Build app (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          chmod +x scripts/release/build_macos.sh scripts/release/package_macos.sh
+          scripts/release/build_macos.sh
+
+      - name: Build app (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          chmod +x scripts/release/build_linux.sh scripts/release/package_linux.sh scripts/release/linux-install.sh
+          scripts/release/build_linux.sh
+
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          iscc scripts/release/windows-installer.iss
+
+      - name: Package macOS dmg
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          scripts/release/package_macos.sh
+
+      - name: Package Linux archive
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          scripts/release/package_linux.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-artifacts
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/**/*
+          generate_release_notes: true

@@ -10,6 +10,7 @@ from server.controller_state import ControllerState
 from server.midi_mapper import MidiMapper 
 from server.communication import CommunicationThread
 from server.provisioning_service import ProvisioningService
+from server.dependency_checks import collect_startup_warnings
 from server.wifi_backend import WiFiBackend
 
 
@@ -30,11 +31,16 @@ def main():
     
     config = get_config()
 
+    for warning in collect_startup_warnings():
+        print(f"Warning: {warning}")
+
     # Initialize MIDI output
     midi_out = MIDIOutput(
         port_name=config['network']['midi_port_name'],
         backend=config['network']['midi_backend']
     )
+    if not midi_out.is_connected:
+        print(f"Warning: MIDI output is not connected. {midi_out.last_error}")
 
     # Start the UDP receiver thread
     provisioning_service = ProvisioningService(WiFiBackend())

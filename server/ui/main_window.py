@@ -1,4 +1,5 @@
 import sys
+import os
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QApplication,
@@ -14,12 +15,12 @@ from PyQt5.QtGui import QKeySequence, QPixmap
 
 from server.config import (
     import_config_from_file,
-    save_to_default_path,
     set_controller_muted,
 )
 from server.communication import CommunicationThread
 from server.provisioning_service import ProvisioningService
 from server.shared_state import controllers
+from server.runtime_paths import get_resource_path
 from server.ui.dialogs.provisioning_wizard import ProvisioningWizard
 from server.ui.dialogs.visualiser_window import VisualiserWindow
 import server.ui.widgets.controller_config_panel as controller_config_panel
@@ -60,7 +61,8 @@ class MainWindow(QMainWindow):
         top_bar.setSpacing(8)
         
         logo = QLabel()
-        logo.setPixmap(QPixmap("server/ui/img/yy_logo.jpg").scaledToHeight(32, Qt.TransformationMode.SmoothTransformation))
+        logo_path = get_resource_path(os.path.join("server", "ui", "img", "yy_logo.jpg"))
+        logo.setPixmap(QPixmap(logo_path).scaledToHeight(32, Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title = QLabel(text="Handheld MIDI Controllers")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")

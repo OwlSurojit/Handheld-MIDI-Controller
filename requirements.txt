@@ -1,9 +1,7 @@
 python-rtmidi
 PyYAML
 numpy
-OneEuroFilter
 PyQt5
-psutil
 pyqtgraph
 PyOpenGL
 qtawesome
