@@ -54,6 +54,32 @@ BUILD_VARIANT=visualiser scripts/release/package_appimage.sh
 - Linux Wi-Fi provisioning requires `nmcli` (NetworkManager).
 - Windows virtual MIDI loopback still requires a loopback endpoint provider. The app now falls back to the first available MIDI out port if the preferred name is unavailable.
 
+## macOS without paid Apple account
+
+You can ship a working macOS build without a paid Apple Developer account, but you cannot notarize it. That means users will still see Gatekeeper warnings on first launch.
+
+- The release script now performs ad-hoc signing by default (`codesign -s -`) if `codesign` is available.
+- To disable signing entirely, set `MACOS_SIGN_APP=0` when running `scripts/release/package_macos.sh`.
+- To use a specific local identity, set `MACOS_SIGN_IDENTITY="<identity>"`.
+- The package step also generates `dist/RELEASE_NOTES-macos-<variant>-<version>.txt` and includes it in the DMG.
+
+Recommended launch instructions for users (unsigned/not-notarized app):
+
+1. Open the DMG and drag the app to `Applications`.
+2. In Finder, right-click the app and choose `Open`.
+3. Confirm the prompt with `Open`.
+
+If the app is still blocked, users can run:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Handheld MIDI Controller.app"
+```
+
+Notes:
+
+- Notarization and seamless double-click launch require an Apple Developer account.
+- There is no legitimate way to fully bypass Gatekeeper for unknown third-party apps on end-user machines.
+
 ## Future improvements
 
 - Add code signing for Windows installer.
