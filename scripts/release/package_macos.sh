@@ -2,16 +2,19 @@
 set -euo pipefail
 
 APP_NAME="Handheld MIDI Controller"
+VARIANT="${BUILD_VARIANT:-core}"
 APP_BUNDLE="dist/${APP_NAME}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 VERSION="${APP_VERSION:-0.0.0-dev}"
+SRC_DIR="dist/HandheldMIDI-${VARIANT}"
+DMG_PATH="dist/HandheldMIDI-macos-${VARIANT}-${VERSION}.dmg"
 
-rm -rf "${APP_BUNDLE}" "dist/HandheldMIDI-macos-${VERSION}.dmg"
+rm -rf "${APP_BUNDLE}" "${DMG_PATH}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-cp -R dist/HandheldMIDI/* "${MACOS_DIR}/"
+cp -R "${SRC_DIR}"/* "${MACOS_DIR}/"
 
 cat > "${CONTENTS_DIR}/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -24,6 +27,7 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleExecutable</key><string>HandheldMIDI</string>
+  <key>HandheldMIDIVariant</key><string>${VARIANT}</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
 </dict>
 </plist>
@@ -31,4 +35,4 @@ EOF
 
 chmod +x "${MACOS_DIR}/HandheldMIDI"
 
-hdiutil create -volname "${APP_NAME}" -srcfolder "${APP_BUNDLE}" -ov -format UDZO "dist/HandheldMIDI-macos-${VERSION}.dmg"
+hdiutil create -volname "${APP_NAME} (${VARIANT})" -srcfolder "${APP_BUNDLE}" -ov -format UDZO "${DMG_PATH}"

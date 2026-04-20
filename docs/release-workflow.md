@@ -4,9 +4,9 @@ This repository uses a tag-driven GitHub Actions workflow at `.github/workflows/
 
 ## What it produces
 
-- Windows: Inno Setup installer (`.exe`)
-- macOS: DMG package (`.dmg`)
-- Linux: AppImage (`.AppImage`) and tar.gz package with installer script (`.tar.gz`)
+- Windows: single Inno Setup installer (`.exe`) with optional Visualiser feature checkbox
+- macOS: separate core and visualiser DMGs (`.dmg`)
+- Linux: separate core and visualiser AppImages (`.AppImage`) and tar.gz packages (`.tar.gz`)
 
 ## Triggering a production build
 
@@ -34,7 +34,8 @@ scripts/release/build_windows.ps1
 ```bash
 chmod +x scripts/release/build_macos.sh scripts/release/package_macos.sh
 scripts/release/build_macos.sh
-scripts/release/package_macos.sh
+BUILD_VARIANT=core scripts/release/package_macos.sh
+BUILD_VARIANT=visualiser scripts/release/package_macos.sh
 ```
 
 ### Linux
@@ -42,8 +43,10 @@ scripts/release/package_macos.sh
 ```bash
 chmod +x scripts/release/build_linux.sh scripts/release/package_linux.sh scripts/release/package_appimage.sh scripts/release/linux-install.sh
 scripts/release/build_linux.sh
-scripts/release/package_linux.sh
-scripts/release/package_appimage.sh
+BUILD_VARIANT=core scripts/release/package_linux.sh
+BUILD_VARIANT=visualiser scripts/release/package_linux.sh
+BUILD_VARIANT=core scripts/release/package_appimage.sh
+BUILD_VARIANT=visualiser scripts/release/package_appimage.sh
 ```
 
 ## Runtime dependency notes

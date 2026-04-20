@@ -1,0 +1,6 @@
+python-rtmidi
+PyYAML
+numpy
+PyQt5
+qtawesome
+superqt

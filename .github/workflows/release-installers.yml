@@ -70,19 +70,22 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          scripts/release/package_macos.sh
+          BUILD_VARIANT=core scripts/release/package_macos.sh
+          BUILD_VARIANT=visualiser scripts/release/package_macos.sh
 
       - name: Package Linux archive
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          scripts/release/package_linux.sh
+          BUILD_VARIANT=core scripts/release/package_linux.sh
+          BUILD_VARIANT=visualiser scripts/release/package_linux.sh
 
       - name: Package Linux AppImage
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          scripts/release/package_appimage.sh
+          BUILD_VARIANT=core scripts/release/package_appimage.sh
+          BUILD_VARIANT=visualiser scripts/release/package_appimage.sh
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

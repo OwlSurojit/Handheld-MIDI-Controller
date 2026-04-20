@@ -1,5 +1,6 @@
 import sys
 import os
+from typing import Any
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QApplication,
@@ -22,7 +23,6 @@ from server.provisioning_service import ProvisioningService
 from server.shared_state import controllers
 from server.runtime_paths import get_resource_path
 from server.ui.dialogs.provisioning_wizard import ProvisioningWizard
-from server.ui.dialogs.visualiser_window import VisualiserWindow
 import server.ui.widgets.controller_config_panel as controller_config_panel
 from server.ui.widgets.controller_list import ControllerListWidget
 from server.ui.widgets.preset_manager import PresetBar
@@ -40,7 +40,7 @@ class MainWindow(QMainWindow):
         self.provisioning_service = provisioning_service
         self.communication_thread = communication_thread
 
-        self.visualiser_windows: dict[bytes, VisualiserWindow] = {}
+        self.visualiser_windows: dict[bytes, Any] = {}
 
         root = QWidget(self)
         self.setCentralWidget(root)
@@ -186,6 +186,18 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Save Failed", "Failed to save config.")
 
     def open_visualiser(self, controller_id: bytes):
+        try:
+            from server.ui.dialogs.visualiser_window import VisualiserWindow
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Visualiser Unavailable",
+                "The Visualiser feature is not installed in this build. "
+                "Install the optional Visualiser component and restart the app.\n\n"
+                f"Details: {exc}",
+            )
+            return
+
         if controller_id in self.visualiser_windows:
             try:
                 self.visualiser_windows[controller_id].show()
