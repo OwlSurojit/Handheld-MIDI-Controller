@@ -42,7 +42,17 @@ chmod +x "${MACOS_DIR}/HandheldMIDI"
 if [[ "${SIGN_APP}" == "1" ]]; then
   if command -v codesign >/dev/null 2>&1; then
     echo "Signing app bundle with identity: ${SIGNING_IDENTITY}"
-    codesign --force --deep --timestamp=none --sign "${SIGNING_IDENTITY}" "${APP_BUNDLE}"
+
+    # Sign only actual Mach-O code objects first. Using --deep here can fail on
+    # non-code files that exist inside PyInstaller bundles (e.g. *.dist-info).
+    while IFS= read -r -d '' candidate; do
+      if file "${candidate}" | grep -q "Mach-O"; then
+        codesign --force --timestamp=none --sign "${SIGNING_IDENTITY}" "${candidate}"
+      fi
+    done < <(find "${APP_BUNDLE}/Contents" -type f -print0)
+
+    # Finally sign the outer app bundle.
+    codesign --force --timestamp=none --sign "${SIGNING_IDENTITY}" "${APP_BUNDLE}"
     codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
   else
     echo "Warning: codesign not found, creating unsigned app bundle"
