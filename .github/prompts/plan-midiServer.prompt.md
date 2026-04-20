@@ -172,7 +172,7 @@ The user rotates their wrist/body around the yaw axis (turning the device as if 
   - **Controllers tab** — list of connected devices (ID, IP, name, channel, signal strength/latency)
   - **Mapping editor tab** — visual editor for gesture→MIDI mappings (drag-drop CC assignment, range tweaks)
   - **Scale & zones tab** — dropdown preset (pentatonic_major, minor, ionian, blues, custom) + visual zone wheel showing yaw sectors
-  - **Hit detector tab** — sliders for `gyro_onset_threshold`, `accel_confirm_threshold`, `velocity_gyro_weight`, velocity range
+  - **Hit detector tab** — sliders for `gyro_onset_threshold`, `accel_confirm_threshold`, velocity range
   - **Presets tab** — save/load interface configs (NOT instruments), includes templates (minimal, full, custom)
   - **Status tab** — real-time metrics (FPS, latency p50/p99, frame drops, per-controller signal health)
 
@@ -284,7 +284,6 @@ mappings:
 hit_detector:
   gyro_onset_threshold: 150         # °/s
   accel_confirm_threshold: 1.5      # g
-  velocity_gyro_weight: 0.6         # α: gyro vs accel contribution
   velocity_min: 20
   velocity_max: 127
   refractory_ms: 250

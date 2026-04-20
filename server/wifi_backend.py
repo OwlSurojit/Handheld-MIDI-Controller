@@ -101,7 +101,9 @@ class WiFiBackend:
             return self._ok("netsh", "wlan", "disconnect")
 
         if self.system == "linux":
-            return self._ok("nmcli", "device", "disconnect", "wifi") or self._ok("nmcli", "radio", "wifi", "off")
+            cur_ssid = self.current_ssid()
+            if cur_ssid:
+                return self._ok("nmcli", "device", "disconnect", cur_ssid)
 
         if self.system == "darwin":
             return self._ok(
@@ -174,6 +176,9 @@ class WiFiBackend:
             temp_file.close()
         
         return success
+    
+    def system_is(self, name: str) -> bool:
+        return self.system == name.lower()
 
     def _run(self, *cmd: str) -> str:
         try:

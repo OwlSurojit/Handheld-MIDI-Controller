@@ -99,7 +99,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
                 "gyro_release_threshold": -1000,
                 "max_velocity_gyro": 2000,
                 "accel_onset_threshold": 0.5,
-                "velocity_gyro_weight": 0.6,
                 "velocity_min": 20,
                 "velocity_max": 127,
                 "hit_window_ms": 100,

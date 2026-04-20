@@ -107,19 +107,7 @@ class MidiMapper(threading.Thread):
         params = hit_cfg['parameters']
         
         # Calculate velocity
-
-        # norm_gyro = min(peak_gyro / (params['gyro_onset_threshold'] * 2), 1.0)
-        # norm_accel = min(peak_accel / (params['accel_confirm_threshold'] * 2), 1.0)
-        
-        # alpha = params['velocity_gyro_weight']
-        # v = alpha * norm_gyro + (1 - alpha) * norm_accel
-
-        # v = min(state.hit_max_gyro / (params['max_velocity_gyro'] - params['gyro_onset_threshold']), 1.0)
-        
-        # velocity = int(params['velocity_min'] + v * (params['velocity_max'] - params['velocity_min']))
-        # velocity = max(0, min(127, velocity))
-        
-        velocity = np.interp(state.hit_max_gyro, [params['gyro_onset_threshold'], params['max_velocity_gyro']], [params['velocity_min'], params['velocity_max']])
+        velocity = int(np.interp(state.hit_max_gyro, [params['gyro_onset_threshold'], params['max_velocity_gyro']], [params['velocity_min'], params['velocity_max']]))
 
         # Select note based on source
         scale_cfg = hit_cfg.get('scale', {})

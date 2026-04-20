@@ -65,7 +65,7 @@ class ProvisioningService:
             return True
 
         previous_ssid = self._wifi.current_ssid()
-        if previous_ssid:
+        if previous_ssid and self._wifi.system_is("windows"):
             self._wifi.disconnect()
 
         self._previous_ssid = previous_ssid

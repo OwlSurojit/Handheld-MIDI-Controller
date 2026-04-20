@@ -169,16 +169,6 @@ class HitAdvancedDialog(QDialog):
         self.accel_onset.valueChanged.connect(lambda _v: self._mark_touched("accel_onset_threshold"))
         form.addRow("Accel Onset (g)", self.accel_onset)
 
-        self.velocity_weight = QDoubleSpinBox()
-        self.velocity_weight.setRange(-0.05, 1.0)
-        self.velocity_weight.setSpecialValueText(" ")
-        self.velocity_weight.setDecimals(2)
-        self.velocity_weight.setSingleStep(0.05)
-        vel_weight_val = params.get("velocity_gyro_weight")
-        self.velocity_weight.setValue(-0.05 if vel_weight_val is None else float(vel_weight_val))
-        self.velocity_weight.valueChanged.connect(lambda _v: self._mark_touched("velocity_gyro_weight"))
-        form.addRow("Velocity Gyro Weight", self.velocity_weight)
-
 
         ### DIALOG BUTTONS ###
 
@@ -225,8 +215,6 @@ class HitAdvancedDialog(QDialog):
             params_patch["max_velocity_gyro"] = float(self.max_velocity_gyro.value())
         if "accel_onset_threshold" in self._touched and self.accel_onset.value() >= 0.0:
             params_patch["accel_onset_threshold"] = float(self.accel_onset.value())
-        if "velocity_gyro_weight" in self._touched and self.velocity_weight.value() >= 0.0:
-            params_patch["velocity_gyro_weight"] = float(self.velocity_weight.value())
         if "velocity_min" in self._touched and self.velocity_min.value() >= 0:
             params_patch["velocity_min"] = int(self.velocity_min.value())
         if "velocity_max" in self._touched and self.velocity_max.value() >= 0:

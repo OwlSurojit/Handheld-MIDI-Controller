@@ -21,7 +21,7 @@
   - detect if there is a wired connection --> don't select current wifi in step 2
   - Prevent constant rescan to keep selecting all controllers   DONE
   - verify SSID and pass before sending it to everyone?
-- identify controller button
+- identify controller button  DONE
 
 # BUGS
 - Every now and again there is a massive random spike in accel or gyro data --> maybe we will need to bring back some kind of filter...
