@@ -65,7 +65,7 @@ class ProvisioningWizard(QDialog):
 
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setInterval(5000)
-        self._refresh_timer.timeout.connect(self._refresh_devices)
+        # self._refresh_timer.timeout.connect(self._refresh_devices)
 
         self._set_controls_enabled(False)
         self._update_nav_buttons()
@@ -165,7 +165,7 @@ class ProvisioningWizard(QDialog):
         ssid_row.addWidget(refresh_btn)
         password_row = QHBoxLayout()
         password_row.setContentsMargins(0,0,0,0)
-        password_row.addWidget(self._password_input)
+        password_row.addWidget(self._password_input, 1)
         password_row.addWidget(view_password_btn)
         form.addRow("SSID", ssid_row)
         form.addRow("Password", password_row)
@@ -284,6 +284,7 @@ class ProvisioningWizard(QDialog):
             return
 
         results = self._provisioning.provision_access_points(selected_aps, ssid, password)
+        print("Provisioning results:\n", results)
         ok_count = sum(1 for status in results.values() if status == "ok")
 
         QMessageBox.information(
@@ -312,12 +313,21 @@ class ProvisioningWizard(QDialog):
         if user_ok != QMessageBox.Yes:
             return
 
-        self._provisioning.start_setup_session()
+        if not self._provisioning.start_setup_session():
+            QMessageBox.critical(
+                self,
+                "Location access not granted",
+                "Without location access the app cannot scan for local WiFi networks and thus the provisioning service is not available.\n" \
+                "Please enable location access."
+            )
+            self.reject()
+            return
+        
         self._started = True
         self._set_controls_enabled(True)
         self._refresh_timer.start()
-        self._load_ssids()
         self._refresh_devices()
+        self._load_ssids()
         self._stack.setCurrentIndex(1)
         self._update_nav_buttons()
 
@@ -342,8 +352,6 @@ class ProvisioningWizard(QDialog):
 
     def closeEvent(self, a0):
         self._refresh_timer.stop()
-        # if self._started:
-        #     self._reconnect_previous_wifi()
         super().closeEvent(a0)
         
     

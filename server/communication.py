@@ -223,11 +223,11 @@ class CommunicationThread(threading.Thread):
         sock = self._create_socket()
         try:
             while not self.stop_event.is_set():
-                self._flush_haptic_commands(sock)
-                self._flush_identify_requests(sock)
-                if self.provisioning_service:
-                    self.provisioning_service.flush_pending(sock, self.udp_port)
                 try:
+                    self._flush_haptic_commands(sock)
+                    self._flush_identify_requests(sock)
+                    if self.provisioning_service:
+                        self.provisioning_service.flush_pending(sock, self.udp_port)
                     raw, addr = sock.recvfrom(_MAX_PACKET_SIZE)
                     self._handle_packet(raw, addr, sock)
 

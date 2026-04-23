@@ -185,8 +185,8 @@ void setup() {
     }
 
     if (!configureRuntimeDmp(myICM)) {
-        while (1)
-            ; // Do nothing more
+        pulseHaptic(100, 50, 5);
+        rp2040.reboot();
     }
 }
 

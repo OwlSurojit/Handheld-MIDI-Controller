@@ -3,7 +3,7 @@ import threading
 import time
 from queue import Empty, Full, Queue
 
-from server.wifi_backend import WiFiBackend
+from server.wifi_utils.wifi_backend import WiFiBackend
 
 PROVISIONING_SET_WIFI = 0x10
 PROVISIONING_ACK = 0x11
@@ -63,6 +63,9 @@ class ProvisioningService:
     def start_setup_session(self) -> bool:
         if self._previous_ssid is not None:
             return True
+        
+        if not self._wifi.is_authorized():
+            return False
 
         previous_ssid = self._wifi.current_ssid()
         if previous_ssid and self._wifi.system_is("windows"):
@@ -183,8 +186,13 @@ class ProvisioningService:
                 cmd = self._commands.get_nowait()
             except Empty:
                 break
-
-            udp_socket.sendto(cmd.packet, (cmd.target_ip, udp_port))
+            
+            try:
+                udp_socket.sendto(cmd.packet, (cmd.target_ip, udp_port))
+            except Exception as exc:
+                print("Provisioning Command couldn't be sent:", exc, "\nRetrying...")
+                self._commands.put_nowait(cmd)
+                return
             print(f"Sent provisioning packet to {cmd.target_ip}")
 
     def handle_packet(self, raw: bytes, addr: tuple[str, int]) -> bool:

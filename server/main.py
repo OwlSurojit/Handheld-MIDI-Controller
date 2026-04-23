@@ -11,7 +11,7 @@ from server.midi_mapper import MidiMapper
 from server.communication import CommunicationThread
 from server.provisioning_service import ProvisioningService
 from server.dependency_checks import collect_startup_warnings
-from server.wifi_backend import WiFiBackend
+from server.wifi_utils.wifi_backend import WiFiBackend
 
 
 controllers: Dict[int, ControllerState] = {}
