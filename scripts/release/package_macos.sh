@@ -1,43 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="Handheld MIDI Controller"
 VARIANT="${BUILD_VARIANT:-core}"
-APP_BUNDLE="dist/${APP_NAME}.app"
-CONTENTS_DIR="${APP_BUNDLE}/Contents"
-MACOS_DIR="${CONTENTS_DIR}/MacOS"
-RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 VERSION="${APP_VERSION:-0.0.0-dev}"
-SRC_DIR="dist/HandheldMIDI-${VARIANT}"
 DMG_PATH="dist/HandheldMIDI-macos-${VARIANT}-${VERSION}.dmg"
 DMG_STAGING_DIR="dist/dmg-staging-${VARIANT}-${VERSION}"
 RELEASE_NOTES_PATH="dist/RELEASE_NOTES-macos-${VARIANT}-${VERSION}.txt"
 SIGN_APP="${MACOS_SIGN_APP:-1}"
 SIGNING_IDENTITY="${MACOS_SIGN_IDENTITY:--}"
 
-rm -rf "${APP_BUNDLE}" "${DMG_PATH}" "${DMG_STAGING_DIR}" "${RELEASE_NOTES_PATH}"
-mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
+case "${VARIANT}" in
+  core)
+    APP_BUNDLE_NAME="Handheld MIDI Controller Core.app"
+    ;;
+  visualiser)
+    APP_BUNDLE_NAME="Handheld MIDI Controller Visualiser.app"
+    ;;
+  *)
+    echo "Unsupported BUILD_VARIANT='${VARIANT}'. Expected one of: core, visualiser."
+    exit 1
+    ;;
+esac
 
-cp -R "${SRC_DIR}"/* "${MACOS_DIR}/"
+SOURCE_APP_BUNDLE="dist/${APP_BUNDLE_NAME}"
 
-cat > "${CONTENTS_DIR}/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleName</key><string>${APP_NAME}</string>
-  <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
-  <key>CFBundleIdentifier</key><string>com.handheldmidi.controller</string>
-  <key>CFBundleVersion</key><string>${VERSION}</string>
-  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleExecutable</key><string>HandheldMIDI</string>
-  <key>HandheldMIDIVariant</key><string>${VARIANT}</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
-</dict>
-</plist>
-EOF
+if [[ ! -d "${SOURCE_APP_BUNDLE}" ]]; then
+  echo "Expected app bundle not found: ${SOURCE_APP_BUNDLE}"
+  echo "Run scripts/release/build_macos.sh first."
+  exit 1
+fi
 
-chmod +x "${MACOS_DIR}/HandheldMIDI"
+rm -rf "${DMG_PATH}" "${DMG_STAGING_DIR}" "${RELEASE_NOTES_PATH}"
+mkdir -p "${DMG_STAGING_DIR}"
+cp -R "${SOURCE_APP_BUNDLE}" "${DMG_STAGING_DIR}/"
+
+APP_BUNDLE="${DMG_STAGING_DIR}/${APP_BUNDLE_NAME}"
+
+APP_DISPLAY_NAME="${APP_BUNDLE_NAME%.app}"
 
 if [[ "${SIGN_APP}" == "1" ]]; then
   if command -v codesign >/dev/null 2>&1; then
@@ -74,16 +73,14 @@ Because this build is not notarized, macOS may block first launch.
 
 Install and launch:
 1. Open the DMG.
-2. Drag ${APP_NAME}.app to Applications.
+2. Drag ${APP_BUNDLE_NAME} to Applications.
 3. In Finder, right-click the app and choose Open.
 4. Confirm by clicking Open in the warning dialog.
 
 If macOS still blocks launch, run:
-xattr -dr com.apple.quarantine "/Applications/${APP_NAME}.app"
+xattr -dr com.apple.quarantine "/Applications/${APP_BUNDLE_NAME}"
 EOF
 
-mkdir -p "${DMG_STAGING_DIR}"
-cp -R "${APP_BUNDLE}" "${DMG_STAGING_DIR}/"
 cp "${RELEASE_NOTES_PATH}" "${DMG_STAGING_DIR}/"
 
-hdiutil create -volname "${APP_NAME} (${VARIANT})" -srcfolder "${DMG_STAGING_DIR}" -ov -format UDZO "${DMG_PATH}"
+hdiutil create -volname "${APP_DISPLAY_NAME} (${VARIANT})" -srcfolder "${DMG_STAGING_DIR}" -ov -format UDZO "${DMG_PATH}"

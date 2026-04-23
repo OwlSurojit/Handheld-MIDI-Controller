@@ -33,10 +33,18 @@ scripts/release/build_windows.ps1
 
 ```bash
 chmod +x scripts/release/build_macos.sh scripts/release/package_macos.sh
+# Optional: use a specific interpreter (recommended to match CI, e.g. Python 3.12)
+# PYTHON_BIN=/path/to/python3.12 scripts/release/build_macos.sh
 scripts/release/build_macos.sh
 BUILD_VARIANT=core scripts/release/package_macos.sh
 BUILD_VARIANT=visualiser scripts/release/package_macos.sh
 ```
+
+The macOS flow is intentionally split:
+
+- `build_macos.sh` builds both final `.app` bundles via PyInstaller specs.
+- `package_macos.sh` only signs (optional) and creates DMGs from those prebuilt apps.
+- No manual app bundle reconstruction is performed in shell scripts.
 
 ### Linux
 
