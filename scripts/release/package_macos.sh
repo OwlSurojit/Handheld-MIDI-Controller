@@ -1,26 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VARIANT="${BUILD_VARIANT:-core}"
 VERSION="${APP_VERSION:-0.0.0-dev}"
-DMG_PATH="dist/HandheldMIDI-macos-${VARIANT}-${VERSION}.dmg"
-DMG_STAGING_DIR="dist/dmg-staging-${VARIANT}-${VERSION}"
-RELEASE_NOTES_PATH="dist/RELEASE_NOTES-macos-${VARIANT}-${VERSION}.txt"
+APP_BUNDLE_NAME="Handheld MIDI Controller.app"
+DMG_PATH="dist/HandheldMIDI-macos-${VERSION}.dmg"
+DMG_STAGING_DIR="dist/dmg-staging-${VERSION}"
+RELEASE_NOTES_PATH="dist/RELEASE_NOTES-macos-${VERSION}.txt"
 SIGN_APP="${MACOS_SIGN_APP:-1}"
 SIGNING_IDENTITY="${MACOS_SIGN_IDENTITY:--}"
-
-case "${VARIANT}" in
-  core)
-    APP_BUNDLE_NAME="Handheld MIDI Controller Core.app"
-    ;;
-  visualiser)
-    APP_BUNDLE_NAME="Handheld MIDI Controller Visualiser.app"
-    ;;
-  *)
-    echo "Unsupported BUILD_VARIANT='${VARIANT}'. Expected one of: core, visualiser."
-    exit 1
-    ;;
-esac
 
 SOURCE_APP_BUNDLE="dist/${APP_BUNDLE_NAME}"
 
@@ -66,7 +53,6 @@ fi
 cat > "${RELEASE_NOTES_PATH}" <<EOF
 Handheld MIDI Controller - macOS Install Notes
 
-Variant: ${VARIANT}
 Version: ${VERSION}
 
 Because this build is not notarized, macOS may block first launch.
@@ -83,4 +69,4 @@ EOF
 
 cp "${RELEASE_NOTES_PATH}" "${DMG_STAGING_DIR}/"
 
-hdiutil create -volname "${APP_DISPLAY_NAME} (${VARIANT})" -srcfolder "${DMG_STAGING_DIR}" -ov -format UDZO "${DMG_PATH}"
+hdiutil create -volname "${APP_DISPLAY_NAME}" -srcfolder "${DMG_STAGING_DIR}" -ov -format UDZO "${DMG_PATH}"

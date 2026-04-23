@@ -4,9 +4,9 @@ This repository uses a tag-driven GitHub Actions workflow at `.github/workflows/
 
 ## What it produces
 
-- Windows: single Inno Setup installer (`.exe`) with optional Visualiser feature checkbox
-- macOS: separate core and visualiser DMGs (`.dmg`)
-- Linux: separate core and visualiser AppImages (`.AppImage`) and tar.gz packages (`.tar.gz`)
+- Windows: single Inno Setup installer (`.exe`)
+- macOS: single DMG (`.dmg`)
+- Linux: single AppImage (`.AppImage`) and tar.gz package (`.tar.gz`)
 
 ## Triggering a production build
 
@@ -36,13 +36,12 @@ chmod +x scripts/release/build_macos.sh scripts/release/package_macos.sh
 # Optional: use a specific interpreter (recommended to match CI, e.g. Python 3.12)
 # PYTHON_BIN=/path/to/python3.12 scripts/release/build_macos.sh
 scripts/release/build_macos.sh
-BUILD_VARIANT=core scripts/release/package_macos.sh
-BUILD_VARIANT=visualiser scripts/release/package_macos.sh
+scripts/release/package_macos.sh
 ```
 
 The macOS flow is intentionally split:
 
-- `build_macos.sh` builds both final `.app` bundles via PyInstaller specs.
+- `build_macos.sh` builds the final `.app` bundle via a single PyInstaller spec.
 - `package_macos.sh` only signs (optional) and creates DMGs from those prebuilt apps.
 - No manual app bundle reconstruction is performed in shell scripts.
 
@@ -51,10 +50,8 @@ The macOS flow is intentionally split:
 ```bash
 chmod +x scripts/release/build_linux.sh scripts/release/package_linux.sh scripts/release/package_appimage.sh scripts/release/linux-install.sh
 scripts/release/build_linux.sh
-BUILD_VARIANT=core scripts/release/package_linux.sh
-BUILD_VARIANT=visualiser scripts/release/package_linux.sh
-BUILD_VARIANT=core scripts/release/package_appimage.sh
-BUILD_VARIANT=visualiser scripts/release/package_appimage.sh
+scripts/release/package_linux.sh
+scripts/release/package_appimage.sh
 ```
 
 ## Runtime dependency notes
@@ -69,7 +66,7 @@ You can ship a working macOS build without a paid Apple Developer account, but y
 - The release script now performs ad-hoc signing by default (`codesign -s -`) if `codesign` is available.
 - To disable signing entirely, set `MACOS_SIGN_APP=0` when running `scripts/release/package_macos.sh`.
 - To use a specific local identity, set `MACOS_SIGN_IDENTITY="<identity>"`.
-- The package step also generates `dist/RELEASE_NOTES-macos-<variant>-<version>.txt` and includes it in the DMG.
+- The package step also generates `dist/RELEASE_NOTES-macos-<version>.txt` and includes it in the DMG.
 
 Recommended launch instructions for users (unsigned/not-notarized app):
 

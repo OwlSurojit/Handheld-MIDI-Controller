@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python3 -m pip install --upgrade pip
-pip3 install -r requirements-core.txt
-pip3 install pyinstaller
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+"${PYTHON_BIN}" -m pip install --upgrade pip
+"${PYTHON_BIN}" -m pip install -r requirements.txt
+"${PYTHON_BIN}" -m pip install pyinstaller
 
 rm -rf dist build
-pyinstaller --clean --noconfirm HandheldMIDI-core.spec
-
-pip3 install -r requirements-visualiser.txt
-pyinstaller --clean --noconfirm HandheldMIDI-visualiser.spec
+"${PYTHON_BIN}" -m PyInstaller --clean --noconfirm HandheldMIDI.spec

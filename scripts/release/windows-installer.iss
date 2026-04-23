@@ -26,11 +26,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
-Name: "visualiser"; Description: "Install Visualiser feature (OpenGL, larger install size)"; GroupDescription: "Optional features:"; Flags: unchecked
 
 [Files]
-Source: "..\..\dist\HandheldMIDI-core\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: not WizardIsTaskSelected('visualiser')
-Source: "..\..\dist\HandheldMIDI-visualiser\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: WizardIsTaskSelected('visualiser')
+Source: "..\..\dist\HandheldMIDI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\Handheld MIDI Controller"; Filename: "{app}\{#AppExeName}"

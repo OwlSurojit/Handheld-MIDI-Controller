@@ -1,17 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-import sys
 import os
+import sys
 from PyInstaller.utils.hooks import collect_submodules
 
 APP_NAME = "HandheldMIDI"
-APP_BUNDLE_NAME = "Handheld MIDI Controller Visualiser.app"
+APP_BUNDLE_NAME = "Handheld MIDI Controller.app"
 APP_VERSION = os.getenv("APP_VERSION", "0.0.0-dev")
 BUNDLE_IDENTIFIER = "com.handheldmidi.controller"
 
 is_macos = sys.platform == "darwin"
-is_windows = sys.platform.startswith("win")
-is_linux = sys.platform.startswith("linux")
 
 hiddenimports = [
     "server.ui.dialogs.visualiser_window",
@@ -24,33 +22,16 @@ datas = [
     ("server/ui/img/yy_logo.jpg", "server/ui/img"),
 ]
 
-binaries = []
-
-excludes = []
-
-# Add platform-specific adjustments here if needed.
-# Example:
-# if is_windows:
-#     hiddenimports += ["some_windows_only_module"]
-#     datas += [("path/to/windows/file", "dest")]
-#
-# if is_linux:
-#     hiddenimports += ["some_linux_only_module"]
-#
-# if is_macos:
-#     hiddenimports += ["some_macos_only_module"]
-#     binaries += [("path/to/libsomething.dylib", ".")]
-
 a = Analysis(
     ["server/main.py"],
     pathex=["."],
-    binaries=binaries,
+    binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=excludes,
+    excludes=[],
     noarchive=False,
 )
 
@@ -76,19 +57,18 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="HandheldMIDI-visualiser",
+    name=APP_NAME,
 )
 
 if is_macos:
     app = BUNDLE(
         coll,
         name=APP_BUNDLE_NAME,
-        icon=None,  # set to path to .icns if you have one
+        icon=None,
         bundle_identifier=BUNDLE_IDENTIFIER,
         info_plist={
             "CFBundleName": "Handheld MIDI Controller",
             "CFBundleDisplayName": "Handheld MIDI Controller",
-            "HandheldMIDIVariant": "visualiser",
             "CFBundleExecutable": APP_NAME,
             "CFBundleShortVersionString": APP_VERSION,
             "CFBundleVersion": APP_VERSION,

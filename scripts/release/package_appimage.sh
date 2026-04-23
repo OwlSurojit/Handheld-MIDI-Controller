@@ -2,11 +2,10 @@
 set -euo pipefail
 
 VERSION="${APP_VERSION:-0.0.0-dev}"
-VARIANT="${BUILD_VARIANT:-core}"
 APPDIR="dist/AppDir"
 APPIMAGE_TOOL="tools/appimagetool-x86_64.AppImage"
-SRC_DIR="dist/HandheldMIDI-${VARIANT}"
-OUTPUT="dist/HandheldMIDI-linux-${VARIANT}-${VERSION}.AppImage"
+SRC_DIR="dist/HandheldMIDI"
+OUTPUT="dist/HandheldMIDI-linux-${VERSION}.AppImage"
 
 rm -rf "${APPDIR}" "${OUTPUT}"
 mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/256x256/apps"
@@ -27,11 +26,11 @@ exec "${HERE}/usr/bin/HandheldMIDI" "$@"
 EOF
 chmod +x "${APPDIR}/AppRun"
 
-cat > "${APPDIR}/handheld-midi.desktop" <<'EOF'
+cat > "${APPDIR}/handheld-midi.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Handheld MIDI Controller
-Comment=Variant: ${VARIANT}
+Comment=MIDI controller host application
 Exec=HandheldMIDI
 Icon=handheld-midi
 Categories=AudioVideo;Audio;Midi;

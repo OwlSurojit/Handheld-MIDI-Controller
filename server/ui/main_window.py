@@ -192,8 +192,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Visualiser Unavailable",
-                "The Visualiser feature is not installed in this build. "
-                "Install the optional Visualiser component and restart the app.\n\n"
+                "Unable to open the visualiser window.\n\n"
                 f"Details: {exc}",
             )
             return
