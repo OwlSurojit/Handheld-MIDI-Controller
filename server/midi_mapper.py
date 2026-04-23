@@ -210,18 +210,26 @@ class MidiMapper(threading.Thread):
             return 1.0 - 0.5 * ((2.0 * (1.0 - x)) ** amount)
         return x
 
-    def send_scheduled_note_offs(self, controllers: dict):
+    def send_scheduled_note_offs(self, controllers: dict[bytes, ControllerState]):
         """A simple way to handle note offs for this implementation."""
         now = time.monotonic()
         for _, state in controllers.items():
             cfg = get_effective_controller_config(state.mac)
             note_duration_ms = cfg['hit']['parameters']['note_duration_ms']
-            for note, timestamp in list(state.get_on_notes().items()):
-                if (now - timestamp) * 1000 >= note_duration_ms:
+            for note, timestamps in state.get_on_notes().items():
+                due_count = 0
+                for timestamp in timestamps:
+                    if (now - timestamp) * 1000 >= note_duration_ms:
+                        due_count += 1
+                    else:
+                        break
+
+                for _ in range(due_count):
                     self.midi_out.send_note_off(state.midi_channel, note)
                     state.remove_on_note(note)
 
     def send_all_notes_off(self, state: ControllerState):
-        for note in state.get_on_notes().keys():
-            self.midi_out.send_note_off(state.midi_channel, note)
+        for note, timestamps in state.get_on_notes().items():
+            for _ in timestamps:
+                self.midi_out.send_note_off(state.midi_channel, note)
         state.clear_on_notes()

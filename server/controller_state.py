@@ -67,7 +67,7 @@ class ControllerState:
         self.hit_last_gyro = 0.0
         self.hit_max_accel = 0.0
         self.current_note = 60
-        self.on_notes = {} # note : timestamp
+        self.on_notes = {} # note : [timestamps]
 
         # History for visualisation
         self.swing_accel_x_history = deque(maxlen=ControllerState.HISTORY_LEN)
@@ -198,11 +198,18 @@ class ControllerState:
 
     def add_on_note(self, note: int):
         with self._lock:
-            self.on_notes[note] = time.monotonic()
+            if note not in self.on_notes:
+                self.on_notes[note] = []
+            self.on_notes[note].append(time.monotonic())
             
     def remove_on_note(self, note: int):
         with self._lock:
-            self.on_notes.pop(note, None)
+            timestamps = self.on_notes.get(note)
+            if not timestamps:
+                return
+            timestamps.pop(0)
+            if not timestamps:
+                self.on_notes.pop(note, None)
             
     def clear_on_notes(self):
         with self._lock:
@@ -210,4 +217,4 @@ class ControllerState:
             
     def get_on_notes(self):
         with self._lock:
-            return self.on_notes
+            return {note: timestamps.copy() for note, timestamps in self.on_notes.items()}
