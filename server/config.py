@@ -28,10 +28,10 @@ def _resolve_config_path(path: str) -> str:
     if path:
         candidates.append(path)
         if not os.path.isabs(path):
-            candidates.append(os.path.join(_USER_DATA_DIR, path))
             candidates.append(os.path.join("server", path))
+            candidates.append(os.path.join(_USER_DATA_DIR, path))
 
-    if os.path.basename(path) == "config.yaml":
+    if os.path.basename(path) != "config.yaml":
         candidates.insert(0, _config_path)
         candidates.append(_BUNDLED_CONFIG_PATH)
 
@@ -100,6 +100,7 @@ def _normalize_mapping(mapping: Dict[str, Any]) -> Dict[str, Any]:
             "type": "cc",
             "cc_number": 7,
             "range": [-1, 1],
+            "midi_range": [0, 127],
             "invert": False,
             "curve": "linear",
             "curve_amount": 1.0,
@@ -112,6 +113,13 @@ def _normalize_mapping(mapping: Dict[str, Any]) -> Dict[str, Any]:
     merged["range"] = list(merged.get("range", [-1, 1]))
     if len(merged["range"]) != 2:
         merged["range"] = [-1, 1]
+
+    merged["midi_range"] = list(merged.get("midi_range", [0, 127]))
+    if len(merged["midi_range"]) != 2:
+        merged["midi_range"] = [0, 127]
+    if merged["midi_range"][0] > merged["midi_range"][1]:
+        merged["midi_range"] = [merged["midi_range"][1], merged["midi_range"][0]]
+
     merged["invert"] = bool(merged.get("invert", False))
     if merged["range"][0] > merged["range"][1]:
         merged["range"] = [merged["range"][1], merged["range"][0]]

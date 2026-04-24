@@ -35,9 +35,6 @@ class MidiMapper(threading.Thread):
 
             for state in active_controllers:
                 self.process(state)
-            
-            # Handle note-offs in a simple way for this iteration
-            self.send_scheduled_note_offs(controllers)
 
             # Sleep briefly to yield CPU
             time.sleep(0.0005) # 0.5ms sleep as per plan
@@ -48,6 +45,7 @@ class MidiMapper(threading.Thread):
     def process(self, state: ControllerState):
         state.process_raw_data()
         cfg = get_effective_controller_config(state.mac)
+        self._send_scheduled_note_offs(state, cfg)
         if cfg.get("muted", False):
             return
         self._update_hit_detector(state, cfg)
@@ -178,9 +176,14 @@ class MidiMapper(threading.Thread):
             if bool(m.get('invert', False)):
                 norm_val = 1.0 - norm_val
             norm_val = self._apply_curve(norm_val, m.get('curve', 'linear'), m.get('curve_amount', 1.0))
+
+            midi_range = m.get('midi_range', [0, 127])
+            out_min, out_max = midi_range
+
+            midi_val = out_min + norm_val * (out_max - out_min)
             
             if m['type'] == 'cc':
-                cc_val = int(norm_val * 127)
+                cc_val = max(0, min(127, int(round(midi_val))))
                 key = (state.midi_channel, m['cc_number'])
                 
                 # Delta gate: only send if value changed
@@ -190,7 +193,8 @@ class MidiMapper(threading.Thread):
             
             elif m['type'] == 'pitch_bend':
                 # Pitch bend is 14-bit
-                pb_val = int(norm_val * 16383)
+                pb_norm = max(0.0, min(1.0, midi_val / 127.0))
+                pb_val = int(pb_norm * 16383)
                 self.midi_out.send_pitch_bend(state.midi_channel, pb_val)
 
     def _get_source_value(self, state: ControllerState, source_name: str):
@@ -210,17 +214,15 @@ class MidiMapper(threading.Thread):
             return 1.0 - 0.5 * ((2.0 * (1.0 - x)) ** amount)
         return x
 
-    def send_scheduled_note_offs(self, controllers: dict[bytes, ControllerState]):
+    def _send_scheduled_note_offs(self, state: ControllerState, cfg):
         """A simple way to handle note offs for this implementation."""
         now = time.monotonic()
-        for _, state in controllers.items():
-            cfg = get_effective_controller_config(state.mac)
-            note_duration_ms = cfg['hit']['parameters']['note_duration_ms']
-            for note, timestamps in state.get_on_notes().items():
-                for timestamp in timestamps:
-                    if (now - timestamp) * 1000 >= note_duration_ms:
-                        self.midi_out.send_note_off(state.midi_channel, note)
-                        state.remove_on_note(note, timestamp)
+        note_duration_ms = cfg['hit']['parameters']['note_duration_ms']
+        for note, timestamps in state.get_on_notes().items():
+            for timestamp in timestamps:
+                if (now - timestamp) * 1000 >= note_duration_ms:
+                    self.midi_out.send_note_off(state.midi_channel, note)
+                    state.remove_on_note(note, timestamp)
 
 
     def send_all_notes_off(self, state: ControllerState):

@@ -12,6 +12,9 @@ defaults:
     range:
     - -1
     - 1
+    midi_range:
+    - 0
+    - 127
     invert: true
     curve: linear
     curve_amount: 1.0
@@ -22,6 +25,9 @@ defaults:
     range:
     - -1
     - 1
+    midi_range:
+    - 0
+    - 127
     invert: true
     curve: linear
     curve_amount: 1.0
@@ -51,5 +57,5 @@ defaults:
       velocity_max: 127
       hit_window_ms: 300
       refractory_ms: 50
-      note_duration_ms: 10000
+      note_duration_ms: 500
       gyro_release_threshold: -1000

@@ -1,3 +1,4 @@
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QComboBox,
     QDialog,
@@ -5,6 +6,7 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
 )
+from superqt import QLabeledRangeSlider
 
 from server.config_consts import CURVE_OPTIONS, MAPPING_SOURCE_OPTIONS
 from server.ui.widgets.range_invert_field import RangeInvertField
@@ -90,6 +92,14 @@ class MappingConfigDialog(QDialog):
         self.curve_amount.setValue(0.0 if curve_amount_value is None else float(curve_amount_value))
         self.curve_amount.valueChanged.connect(lambda _v: self._mark_touched("curve_amount"))
         form.addRow("Response Curve Amount", self.curve_amount)
+        
+        
+        midi_range = mapping.get("midi_range", [0, 127])
+        self.midi_range_slider = QLabeledRangeSlider(Qt.Orientation.Horizontal)
+        self.midi_range_slider.setRange(0, 127)
+        self.midi_range_slider.setValue((int(midi_range[0]), int(midi_range[1])))
+        self.midi_range_slider.valueChanged.connect(lambda _v: self._mark_touched("midi_range"))
+        form.addRow("MIDI Output Range", self.midi_range_slider)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -111,6 +121,10 @@ class MappingConfigDialog(QDialog):
 
         if "invert" in self._touched:
             patch["invert"] = self.range_invert_field.is_inverted()
+
+        if "midi_range" in self._touched:
+            midi_min, midi_max = self.midi_range_slider.value()
+            patch["midi_range"] = [int(midi_min), int(midi_max)]
 
         # if "range_min" in self._touched or "range_max" in self._touched:
         #     if self.range_min.value() > -10000.0 and self.range_max.value() > -10000.0:
