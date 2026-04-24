@@ -19,7 +19,7 @@ hiddenimports = [
 datas = [
     ("server/config.yaml", "server"),
     ("server/app_settings.yaml", "server"),
-    ("server/ui/img/yy_logo.jpg", "server/ui/img"),
+    ("server/ui/img/yy_logo.png", "server/ui/img"),
 ]
 
 a = Analysis(

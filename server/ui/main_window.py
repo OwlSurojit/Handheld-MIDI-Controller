@@ -61,11 +61,15 @@ class MainWindow(QMainWindow):
         top_bar.setSpacing(8)
         
         logo = QLabel()
-        logo_path = get_resource_path(os.path.join("server", "ui", "img", "yy_logo.jpg"))
+        logo_path = get_resource_path(os.path.join("server", "ui", "img", "yy_logo.png"))
         logo.setPixmap(QPixmap(logo_path).scaledToHeight(32, Qt.TransformationMode.SmoothTransformation))
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title = QLabel(text="Handheld MIDI Controllers")
-        title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        title_font = title.font()
+        title_font.setBold(True)
+        if title_font.pointSize() > 0:
+            title_font.setPointSize(title_font.pointSize() + 6)
+        title.setFont(title_font)
         top_bar.addWidget(logo)
         top_bar.addWidget(title)
 
@@ -80,8 +84,9 @@ class MainWindow(QMainWindow):
     def _build_controller_list(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
+        base_char_width = max(7, self.fontMetrics().horizontalAdvance("M"))
         self.controller_list = ControllerListWidget()
-        self.controller_list.setMinimumWidth(420)
+        self.controller_list.setMinimumWidth(max(380, base_char_width * 52))
         self.controller_list.focused_controller_changed.connect(self.on_focused_controller_changed)
         self.controller_list.selection_changed.connect(self.on_selection_changed)
         self.controller_list.visualise_requested.connect(self.open_visualiser)
@@ -92,7 +97,7 @@ class MainWindow(QMainWindow):
         self.controller_list.setup_wizard_requested.connect(self.open_provisioning_wizard)
 
         self.config_panel = controller_config_panel.ControllerConfigPanel()
-        self.config_panel.setMinimumWidth(360)
+        self.config_panel.setMinimumWidth(max(320, base_char_width * 45))
         splitter.addWidget(self.controller_list)
         splitter.addWidget(self.config_panel)
         splitter.setStretchFactor(0, 3)
@@ -227,6 +232,14 @@ def launch_ui(
     provisioning_service: ProvisioningService | None = None,
     communication_thread: CommunicationThread | None = None,
 ):
+    aa_enable_high_dpi = getattr(Qt, "AA_EnableHighDpiScaling", None)
+    if aa_enable_high_dpi is not None:
+        QApplication.setAttribute(aa_enable_high_dpi, True)
+
+    aa_use_high_dpi_pixmaps = getattr(Qt, "AA_UseHighDpiPixmaps", None)
+    if aa_use_high_dpi_pixmaps is not None:
+        QApplication.setAttribute(aa_use_high_dpi_pixmaps, True)
+
     aa_share_gl = getattr(Qt, "AA_ShareOpenGLContexts", None)
     if aa_share_gl is not None:
         QApplication.setAttribute(aa_share_gl, True)

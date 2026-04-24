@@ -30,9 +30,26 @@ class ControllerCard(QFrame):
         self._focused = False
         self._selected = False
 
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShape(QFrame.NoFrame)
         self.setFrameShadow(QFrame.Plain)
-        self.setAutoFillBackground(True)
+        self.setObjectName("controllerCard")
+        self.setProperty("focused", False)
+        self.setProperty("selected", False)
+        self.setStyleSheet(
+            "QFrame#controllerCard {"
+            "  background-color: palette(base);"
+            "  border: 1px solid palette(mid);"
+            "  border-radius: 8px;"
+            "}"
+            "QFrame#controllerCard[selected='true'] {"
+            "  background-color: palette(alternate-base);"
+            "  border: 2px solid palette(highlight);"
+            "}"
+            "QFrame#controllerCard[focused='true'] {"
+            "  background-color: palette(midlight);"
+            "  border: 2px solid palette(highlight);"
+            "}"
+        )
 
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 8, 10, 6)
@@ -51,6 +68,7 @@ class ControllerCard(QFrame):
         self.name_label = QLabel("Controller")
         name_font = self.name_label.font()
         name_font.setBold(True)
+        name_font.setPointSize(name_font.pointSize() + 2)
         self.name_label.setFont(name_font)
         title_row.addWidget(self.name_label)
 
@@ -67,7 +85,8 @@ class ControllerCard(QFrame):
 
         self.mute_button = QPushButton("M")
         self.mute_button.setCheckable(True)
-        self.mute_button.setFixedWidth(26)
+        mute_button_width = max(26, self.mute_button.fontMetrics().horizontalAdvance("MM") + 8)
+        self.mute_button.setFixedWidth(mute_button_width)
         self.mute_button.toggled.connect(self._on_mute_toggled)
         title_row.addWidget(self.mute_button)
 
@@ -159,19 +178,12 @@ class ControllerCard(QFrame):
         self._apply_visual_state()
 
     def _apply_visual_state(self):
-        palette = QApplication.palette(self)
-        card_palette = self.palette()
-
-        base_color = palette.color(QPalette.Window)
-        if self._focused or self._selected:
-            # Use the active style's highlight color so focus/selection works across themes.
-            highlight = palette.color(QPalette.Highlight)
-            base_color = highlight.lighter(170 if self._focused else 185)
-
-        card_palette.setColor(QPalette.Window, base_color)
-        self.setPalette(card_palette)
-
-        self.setLineWidth(2 if (self._focused or self._selected) else 1)
+        self.setProperty("focused", self._focused)
+        self.setProperty("selected", self._selected)
+        style = self.style()
+        if style is not None:
+            style.unpolish(self)
+            style.polish(self)
         self.update()
 
     def set_controller_name(self, name: str):

@@ -2,6 +2,7 @@
 - limit hitting to horizontal range around body by checking orientation window (and possibly other instruments in other windows? (e.g. shakers when hands are up))
 - "virtual controllers" separated by range?
 - send "test" signals for learning midi
+- Another range slider for the MIDI range (0-127)
 - mute controllers
 - config: all params in config.yaml but nice UI and hot-updated!! (save & reload?)
 

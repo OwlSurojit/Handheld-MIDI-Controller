@@ -36,7 +36,13 @@ DISCONNECT_WARNING_TEXT = "Starting setup may temporarily disconnect Wi-Fi while
 SUCCESS_TEXT = "Setup completed successfully!\nIf your computer is connected to the same network as the controllers, " \
 "they should be registered within a few seconds. Otherwise you might need to double-check the credentials you entered."
 
-TITLE_STYLE = "font-weight: 600; font-size: 16px;"
+
+def _style_section_title(label: QLabel) -> None:
+    title_font = label.font()
+    title_font.setBold(True)
+    if title_font.pointSize() > 0:
+        title_font.setPointSize(title_font.pointSize() + 4)
+    label.setFont(title_font)
 
 class ProvisioningWizard(QDialog):
     def __init__(self, provisioning_service: ProvisioningService, parent=None):
@@ -91,7 +97,7 @@ class ProvisioningWizard(QDialog):
 
         
         title = QLabel("Controller Setup Wizard")
-        title.setStyleSheet(TITLE_STYLE)
+        _style_section_title(title)
         layout.addWidget(title)
 
         intro = QLabel(INTRO_TEXT)
@@ -101,8 +107,9 @@ class ProvisioningWizard(QDialog):
         layout.addStretch(1)
         
         start_btn = QPushButton("Start")
-        start_btn.setStyleSheet("font-size: 11pt")
-        start_btn.setMinimumSize(120, 36)
+        start_hint = start_btn.sizeHint()
+        start_btn.setMinimumWidth(max(120, start_hint.width() + 20))
+        start_btn.setMinimumHeight(max(36, start_hint.height() + 8))
         start_btn.clicked.connect(self._start_session)
 
         start_row = QHBoxLayout()
@@ -120,7 +127,7 @@ class ProvisioningWizard(QDialog):
         layout.setSpacing(8)
 
         title = QLabel("Step 1: Select Controllers")
-        title.setStyleSheet(TITLE_STYLE)
+        _style_section_title(title)
         layout.addWidget(title)
 
         description = QLabel(CHOOSE_CONTROLLERS_TEXT)
@@ -152,7 +159,7 @@ class ProvisioningWizard(QDialog):
         layout.setSpacing(8)
 
         title = QLabel("Step 2: Wi-Fi Credentials")
-        title.setStyleSheet(TITLE_STYLE)
+        _style_section_title(title)
         layout.addWidget(title)
 
         description = QLabel(WIFI_CREDENTIALS_TEXT)

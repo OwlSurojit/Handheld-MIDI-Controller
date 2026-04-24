@@ -14,6 +14,16 @@ from server.config_consts import CURVE_OPTIONS, MAPPING_SOURCE_OPTIONS
 from server.ui.widgets.range_invert_field import RangeInvertField
 
 
+def _make_section_label(text: str) -> QLabel:
+    label = QLabel(text)
+    label_font = label.font()
+    label_font.setBold(True)
+    if label_font.pointSize() > 0:
+        label_font.setPointSize(label_font.pointSize() + 1)
+    label.setFont(label_font)
+    return label
+
+
 class HitAdvancedDialog(QDialog):
     def __init__(self, hit_cfg: dict, parent=None):
         super().__init__(parent)
@@ -25,8 +35,7 @@ class HitAdvancedDialog(QDialog):
         form = QFormLayout(self)
         
         ### NOTE SOURCE, RANGE, INVERT, CURVE ###
-        note_source_label = QLabel("Note Mapping")
-        note_source_label.setStyleSheet("font-size: 13px; font-weight: bold;")
+        note_source_label = _make_section_label("Note Mapping")
         form.addRow(note_source_label)
 
         self.note_source = QComboBox()
@@ -84,8 +93,7 @@ class HitAdvancedDialog(QDialog):
         form.addRow(Separator())
 
         ### TIMING & VELOCITY ###
-        timing_label = QLabel("Timing & Velocity")
-        timing_label.setStyleSheet("font-size: 13px; font-weight: bold;")
+        timing_label = _make_section_label("Timing & Velocity")
         form.addRow(timing_label)
         
         self.hit_window_ms = QSpinBox()
@@ -133,8 +141,7 @@ class HitAdvancedDialog(QDialog):
 
 
         ### HIT DETECTION THRESHOLDS ###
-        threshold_label = QLabel("Hit Detection Thresholds")
-        threshold_label.setStyleSheet("font-size: 13px; font-weight: bold;")
+        threshold_label = _make_section_label("Hit Detection Thresholds")
         form.addRow(threshold_label)
 
         self.gyro_onset = QSpinBox()
@@ -236,4 +243,4 @@ class Separator(QFrame):
         super().__init__()
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(QFrame.Sunken)
-        self.setFixedHeight(20)
+        self.setFixedHeight(max(12, self.fontMetrics().height() + 4))

@@ -15,9 +15,11 @@ class RangeInvertField(QWidget):
         self.range_slider.setRange(float(slider_range[0]), float(slider_range[1])) # type: ignore
         self.range_slider.setDecimals(2 if abs(float(slider_range[0])) < 10 else 0)
         self.range_slider.setValue((float(value_range[0]), float(value_range[1])))
+        value_label_width = max(30, self.fontMetrics().horizontalAdvance("-999.99") + 6)
+        slider_min_width = max(200, value_label_width * 2 + 120)
         # Hotfix to prevent slider labels from being cut off
-        self.range_slider.setStyleSheet('SliderLabel { min-width: 30px; }')
-        self.range_slider.setMinimumWidth(200)
+        self.range_slider.setStyleSheet(f"SliderLabel {{ min-width: {value_label_width}px; }}")
+        self.range_slider.setMinimumWidth(slider_min_width)
         self.range_slider.valueChanged.connect(self.range_changed.emit)
 
         self.invert_checkbox = QCheckBox(checkbox_label)

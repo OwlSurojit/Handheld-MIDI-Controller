@@ -31,6 +31,10 @@ _MIXED = object()
 _MISSING = object()
 
 
+def _cc_control_width(widget: QWidget) -> int:
+    return max(42, widget.fontMetrics().horizontalAdvance("888") + 20)
+
+
 def _deep_apply_patch(base: dict, patch: dict) -> dict:
     merged = copy.deepcopy(base) if isinstance(base, dict) else {}
     for key, value in (patch or {}).items():
@@ -168,7 +172,7 @@ class MappingRow(QFrame):
         self.cc_spin = QSpinBox()
         self.cc_spin.setRange(-1, 127)
         self.cc_spin.setSpecialValueText(" ")
-        self.cc_spin.setFixedWidth(42)
+        self.cc_spin.setFixedWidth(_cc_control_width(self.cc_spin))
         cc_value = self.mapping_cfg.get("cc_number", 7)
         self.cc_spin.setValue(-1 if cc_value is _MIXED else int(cc_value))
         self.cc_spin.valueChanged.connect(self._on_cc_changed)
@@ -295,7 +299,11 @@ class ControllerConfigPanel(QWidget):
         root.setSpacing(10)
 
         self.title = QLabel("Select a controller")
-        self.title.setStyleSheet("font-size: 16px; font-weight: 600;")
+        title_font = self.title.font()
+        title_font.setBold(True)
+        if title_font.pointSize() > 0:
+            title_font.setPointSize(title_font.pointSize() + 4)
+        self.title.setFont(title_font)
         root.addWidget(self.title)
 
         self.mapping_group = QGroupBox("Mappings")
@@ -309,17 +317,25 @@ class ControllerConfigPanel(QWidget):
         headers_layout.setContentsMargins(0, 0, 0, 0)
         headers_layout.setSpacing(6)
 
+        cc_column_width = _cc_control_width(self)
+
         name_header = QLabel("Name")
-        name_header.setStyleSheet("font-weight: 600;")
+        name_font = name_header.font()
+        name_font.setBold(True)
+        name_header.setFont(name_font)
         headers_layout.addWidget(name_header, 2)
 
         cc_header = QLabel("CC")
-        cc_header.setStyleSheet("font-weight: 600;")
-        cc_header.setFixedWidth(42)
+        cc_font = cc_header.font()
+        cc_font.setBold(True)
+        cc_header.setFont(cc_font)
+        cc_header.setFixedWidth(cc_column_width)
         headers_layout.addWidget(cc_header)
 
         source_header = QLabel("Controller source")
-        source_header.setStyleSheet("font-weight: 600;")
+        source_font = source_header.font()
+        source_font.setBold(True)
+        source_header.setFont(source_font)
         headers_layout.addWidget(source_header, 2)
 
         headers_layout.addSpacing(91)

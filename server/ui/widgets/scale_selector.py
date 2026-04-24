@@ -41,10 +41,16 @@ class PianoScaleKeyboard(QWidget):
         self._note_rects: dict[int, QRect] = {}
         self._black_notes: list[int] = []
         self._white_notes: list[int] = []
+
+        font_height = max(12, self.fontMetrics().height())
+        self._min_key_width = max(self._MIN_KEY_WIDTH, int(font_height * 1.2))
+        self._max_key_width = max(self._MAX_KEY_WIDTH, int(font_height * 2.4))
+        self._min_key_height = max(self._MIN_KEY_HEIGHT, int(font_height * 4.8))
+        self._max_key_height = max(self._MAX_KEY_HEIGHT, int(font_height * 6.4))
         
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setMinimumHeight(self._MIN_KEY_HEIGHT)
-        self.setMaximumHeight(self._MAX_KEY_HEIGHT)
+        self.setMinimumHeight(self._min_key_height)
+        self.setMaximumHeight(self._max_key_height)
         self._rebuild_notes()
 
     def set_note_range(self, min_note: int, max_note: int) -> None:
@@ -94,11 +100,12 @@ class PianoScaleKeyboard(QWidget):
 
     def sizeHint(self) -> QSize:
         white_count = self._count_white_keys()
-        return QSize(max(1, white_count * 28), self._MAX_KEY_HEIGHT)
+        preferred_width = max(self._min_key_width, min(self._max_key_width, int((self._min_key_width + self._max_key_width) / 2)))
+        return QSize(max(1, white_count * preferred_width), self._max_key_height)
 
     def minimumSizeHint(self) -> QSize:
         white_count = self._count_white_keys()
-        return QSize(max(1, white_count * self._MIN_KEY_WIDTH), self._MIN_KEY_HEIGHT)
+        return QSize(max(1, white_count * self._min_key_width), self._min_key_height)
 
     def resizeEvent(self, a0) -> None:
         super().resizeEvent(a0)
@@ -183,7 +190,7 @@ class PianoScaleKeyboard(QWidget):
         notes = list(range(self._min_note, self._max_note + 1))
         self._white_notes = [note for note in notes if (note % 12) in _WHITE_PCS]
         self._black_notes = [note for note in notes if (note % 12) in _BLACK_KEYS]
-        self.setMinimumWidth(max(1, len(self._white_notes) * self._MIN_KEY_WIDTH))
+        self.setMinimumWidth(max(1, len(self._white_notes) * self._min_key_width))
         self._recompute_geometry()
 
     def _recompute_geometry(self) -> None:
@@ -198,7 +205,7 @@ class PianoScaleKeyboard(QWidget):
 
         white_count = max(1, self._count_white_keys())
         ideal_width = float(rect.width()) / white_count
-        white_key_width = min(self._MAX_KEY_WIDTH, max(self._MIN_KEY_WIDTH, ideal_width))
+        white_key_width = min(self._max_key_width, max(self._min_key_width, ideal_width))
         if (white_key_width * white_count) > rect.width():
             white_key_width = rect.width() / white_count
         black_key_width = white_key_width * self._BLACK_KEY_WIDTH_RATIO
@@ -276,7 +283,8 @@ class PianoScaleWidget(QWidget):
         self._scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         scrollbar = self._scroll_area.horizontalScrollBar()
-        self._scroll_area.setMinimumHeight(self._keyboard.sizeHint().height() + (scrollbar.sizeHint().height() if scrollbar is not None else 20))
+        scrollbar_height = scrollbar.sizeHint().height() if scrollbar is not None else max(16, self.fontMetrics().height())
+        self._scroll_area.setMinimumHeight(self._keyboard.sizeHint().height() + scrollbar_height)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
