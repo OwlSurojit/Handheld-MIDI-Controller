@@ -1,3 +1,5 @@
+import platform
+
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QComboBox,
@@ -20,9 +22,19 @@ import qtawesome as qta
 from server.provisioning_service import ProvisioningService
 
 
-INTRO_TEXT = "This wizard will guide you through setting up your handheld MIDI controllers on your Wi-Fi network for the first time." \
-"Make sure your controllers are powered on and in provisioning mode (LED rapidly blinking) before starting the setup." \
-"As part of the setup, the server will connect to each controller's temporary AP one at a time, so Wi-Fi will disconnect briefly during the process."
+INTRO_TEXT = "This wizard will guide you through setting up your handheld MIDI controllers on your Wi-Fi network for the first time. " \
+"Make sure your controllers are powered on and in provisioning mode (LED rapidly blinking) before starting the setup. " \
+"As part of the setup, the server will connect to each controller's temporary WiFi access point one at a time, so Wi-Fi will disconnect briefly during the process."
+CHOOSE_CONTROLLERS_TEXT = "Choose the controllers to configure. If your controller doesn't show up, make sure it's turned on and in provisioning mode. " \
+"You might need to reset it to factory settings by holding the reset button for 10s (will delete all stored credentials)"
+WIFI_CREDENTIALS_TEXT = "Select the WiFi network which the controllers should connect to and enter its password. " \
+"After provisioning, your computer should be connected to the same network (either wired or wirelessly)."
+MACOS_PERMISSION_TEXT = "On macOS, the app needs location access to scan for the controllers' Wi-Fi networks. " \
+"You might be prompted for permission now. You might also need to allow the app to discover local devices on the network. " \
+"Additionally, you will temporarily lose internet access as your device connects to the controllers. Continue?"
+DISCONNECT_WARNING_TEXT = "Starting setup may temporarily disconnect Wi-Fi while scanning and provisioning. Continue?"
+SUCCESS_TEXT = "Setup completed successfully!\nIf your computer is connected to the same network as the controllers, " \
+"they should be registered within a few seconds. Otherwise you might need to double-check the credentials you entered."
 
 TITLE_STYLE = "font-weight: 600; font-size: 16px;"
 
@@ -111,7 +123,7 @@ class ProvisioningWizard(QDialog):
         title.setStyleSheet(TITLE_STYLE)
         layout.addWidget(title)
 
-        description = QLabel("Choose the controllers to configure. If your controller doesn't show up, make sure it's turned on and in provisioning mode. You might need to reset it to factory settings by holding the reset button for 10s (will delete all stored credentials)")
+        description = QLabel(CHOOSE_CONTROLLERS_TEXT)
         description.setWordWrap(True)
         layout.addWidget(description)
 
@@ -143,7 +155,7 @@ class ProvisioningWizard(QDialog):
         title.setStyleSheet(TITLE_STYLE)
         layout.addWidget(title)
 
-        description = QLabel("Select the WiFi network which the controllers should connect to and enter its password. Your computer should be connected to the same network (either wired or wirelessly).")
+        description = QLabel(WIFI_CREDENTIALS_TEXT)
         description.setWordWrap(True)
         layout.addWidget(description)
 
@@ -287,11 +299,25 @@ class ProvisioningWizard(QDialog):
         print("Provisioning results:\n", results)
         ok_count = sum(1 for status in results.values() if status == "ok")
 
-        QMessageBox.information(
-            self,
-            "Setup Finished",
-            f"Successfully provisioned {ok_count} of {len(selected_aps)} device(s).\nIf your computer is connected to the same network as the devices, they should be registered within a few seconds. Otherwise you might need to double-check the credentials you entered.",
-        )
+        if ok_count == len(selected_aps):
+            QMessageBox.information(
+                self,
+                "Setup Finished",
+                SUCCESS_TEXT,
+            )
+        elif ok_count == 0:
+            QMessageBox.critical(
+                self,
+                "Setup failed",
+                f"The device(s) could not be set up. Please ensure the app is permitted to access and discover local devices on WiFi. Please try running the setup wizard again. Error codes: {results.values()}"
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Some controllers couldn't be set up",
+                f"Only {ok_count} of {len(selected_aps)} controllers were set up successfully. Please try running the setup wizard again for the other controllers. Error codes: {[res for res in results.values() if res != "ok"]}"
+            )
+
         self.accept()
 
     def _set_controls_enabled(self, enabled: bool):
@@ -303,16 +329,17 @@ class ProvisioningWizard(QDialog):
         if self._started:
             return
 
-        user_ok = QMessageBox.question(
+        user_ok = QMessageBox.warning(
             self,
             "Start Setup",
-            "Starting setup may temporarily disconnect Wi-Fi while scanning and provisioning. Continue?",
+            MACOS_PERMISSION_TEXT if platform.system().lower() == "darwin" else DISCONNECT_WARNING_TEXT,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
         if user_ok != QMessageBox.Yes:
             return
 
+        # Only relevant on darwin
         if not self._provisioning.start_setup_session():
             QMessageBox.critical(
                 self,

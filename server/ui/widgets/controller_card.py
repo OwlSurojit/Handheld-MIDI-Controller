@@ -1,4 +1,5 @@
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -27,26 +28,11 @@ class ControllerCard(QFrame):
         self.state = state
         self.controller_mac = state.mac
         self._focused = False
+        self._selected = False
 
-        self.setObjectName("controllerCard")
         self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet(
-            """
-            QFrame#controllerCard {
-                border: 1px solid #d5dbe2;
-                border-radius: 10px;
-                background: #f7f9fc;
-            }
-            QFrame#controllerCard[selected="true"] {
-                border: 2px solid #8cb2ff;
-                background: #f0f6ff;
-            }
-            QFrame#controllerCard[focused=\"true\"] {
-                border: 2px solid #2d6cdf;
-                background: #eef4ff;
-            }
-            """
-        )
+        self.setFrameShadow(QFrame.Plain)
+        self.setAutoFillBackground(True)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 8, 10, 6)
@@ -63,7 +49,9 @@ class ControllerCard(QFrame):
         title_row.addWidget(self.selected_box)
 
         self.name_label = QLabel("Controller")
-        self.name_label.setStyleSheet("font-size: 14px; font-weight: 600;")
+        name_font = self.name_label.font()
+        name_font.setBold(True)
+        self.name_label.setFont(name_font)
         title_row.addWidget(self.name_label)
 
         self.name_edit = QLineEdit()
@@ -99,7 +87,9 @@ class ControllerCard(QFrame):
         bottom_row.setSpacing(8)
 
         self.status_value = QLabel()
-        self.status_value.setStyleSheet("color: #5a6675;")
+        status_palette = self.status_value.palette()
+        status_palette.setColor(QPalette.WindowText, self.palette().color(QPalette.Mid))
+        self.status_value.setPalette(status_palette)
         bottom_row.addWidget(self.status_value)
         bottom_row.addStretch(1)
 
@@ -108,6 +98,7 @@ class ControllerCard(QFrame):
         bottom_row.addWidget(self.rezero_button)
 
         root.addLayout(bottom_row)
+        self._apply_visual_state()
         self.refresh_from_state()
 
     def mousePressEvent(self, a0):
@@ -158,22 +149,29 @@ class ControllerCard(QFrame):
 
     def set_focused(self, focused: bool):
         self._focused = focused
-        self.setProperty("focused", "true" if focused else "false")
-        style = self.style()
-        if style is not None:
-            style.unpolish(self)
-            style.polish(self)
-        self.update()
+        self._apply_visual_state()
 
     def set_selected(self, selected: bool):
+        self._selected = selected
         self.selected_box.blockSignals(True)
         self.selected_box.setChecked(selected)
         self.selected_box.blockSignals(False)
-        self.setProperty("selected", "true" if selected else "false")
-        style = self.style()
-        if style is not None:
-            style.unpolish(self)
-            style.polish(self)
+        self._apply_visual_state()
+
+    def _apply_visual_state(self):
+        palette = QApplication.palette(self)
+        card_palette = self.palette()
+
+        base_color = palette.color(QPalette.Window)
+        if self._focused or self._selected:
+            # Use the active style's highlight color so focus/selection works across themes.
+            highlight = palette.color(QPalette.Highlight)
+            base_color = highlight.lighter(170 if self._focused else 185)
+
+        card_palette.setColor(QPalette.Window, base_color)
+        self.setPalette(card_palette)
+
+        self.setLineWidth(2 if (self._focused or self._selected) else 1)
         self.update()
 
     def set_controller_name(self, name: str):

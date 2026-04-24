@@ -22,7 +22,11 @@
   - Prevent constant rescan to keep selecting all controllers   DONE
   - verify SSID and pass before sending it to everyone?
 - identify controller button  DONE
+- macOS
+  - set NSLocationWhenInUseUsageDescription in Info.plist somehow
 
 # BUGS
 - Every now and again there is a massive random spike in accel or gyro data --> maybe we will need to bring back some kind of filter...
 - The default-set controller names (Controller #n) should not be stored to presets, so that when loading a preset the numbers shouldn't change, that is weird
+- Hit machine enabled button has a weird middle state
+- UI is fugly on mac

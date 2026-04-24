@@ -56,14 +56,22 @@ Handheld MIDI Controller - macOS Install Notes
 Version: ${VERSION}
 
 Because this build is not notarized, macOS may block first launch.
+Unfortunately, we cannot notarize the app without a paid Apple Developer account.
+Since we don't have the funds for that, we have to ask you to jump through some hoops to get the app running on macOS.
 
 Install and launch:
 1. Open the DMG.
 2. Drag ${APP_BUNDLE_NAME} to Applications.
 3. In Finder, right-click the app and choose Open.
 4. Confirm by clicking Open in the warning dialog.
-
-If macOS still blocks launch, run:
+5. If you see a warning like 'Apple could not verify "Handheld MIDI Controller" is free of malware...':
+  a. Click OK to dismiss the warning.
+  b. Open System Settings and go to Security & Privacy.
+  c. Scroll down to "Security", where you should see a message about "Handheld MIDI Controller" being blocked.
+  d. Click the "Open Anyway" button next to that message.
+  e. Confirm by clicking Open in the next dialog.
+  f. You might need to wait a while until the app launches, as macOS performs additional checks.
+6. If macOS still blocks launch, run:
 xattr -dr com.apple.quarantine "/Applications/${APP_BUNDLE_NAME}"
 EOF
 

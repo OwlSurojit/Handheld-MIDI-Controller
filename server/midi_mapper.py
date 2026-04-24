@@ -217,16 +217,11 @@ class MidiMapper(threading.Thread):
             cfg = get_effective_controller_config(state.mac)
             note_duration_ms = cfg['hit']['parameters']['note_duration_ms']
             for note, timestamps in state.get_on_notes().items():
-                due_count = 0
                 for timestamp in timestamps:
                     if (now - timestamp) * 1000 >= note_duration_ms:
-                        due_count += 1
-                    else:
-                        break
+                        self.midi_out.send_note_off(state.midi_channel, note)
+                        state.remove_on_note(note, timestamp)
 
-                for _ in range(due_count):
-                    self.midi_out.send_note_off(state.midi_channel, note)
-                    state.remove_on_note(note)
 
     def send_all_notes_off(self, state: ControllerState):
         for note, timestamps in state.get_on_notes().items():

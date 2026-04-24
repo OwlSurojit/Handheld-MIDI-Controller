@@ -202,12 +202,15 @@ class ControllerState:
                 self.on_notes[note] = []
             self.on_notes[note].append(time.monotonic())
             
-    def remove_on_note(self, note: int):
+    def remove_on_note(self, note: int, timestamp: float = -1.0):
         with self._lock:
             timestamps = self.on_notes.get(note)
             if not timestamps:
                 return
-            timestamps.pop(0)
+            if timestamp < 0:
+                timestamps.pop(0)
+            else:
+                timestamps.remove(timestamp)
             if not timestamps:
                 self.on_notes.pop(note, None)
             
