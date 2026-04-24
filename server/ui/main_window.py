@@ -19,6 +19,7 @@ from server.config import (
     set_controller_muted,
 )
 from server.communication import CommunicationThread
+from server.midi_mapper import MidiMapper
 from server.provisioning_service import ProvisioningService
 from server.shared_state import controllers
 from server.runtime_paths import get_resource_path
@@ -31,6 +32,7 @@ from server.ui.widgets.preset_manager import PresetBar
 class MainWindow(QMainWindow):
     def __init__(
         self,
+        midi_mapper: MidiMapper,
         provisioning_service: ProvisioningService | None = None,
         communication_thread: CommunicationThread | None = None,
     ):
@@ -39,6 +41,7 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 980, 620)
         self.provisioning_service = provisioning_service
         self.communication_thread = communication_thread
+        self.midi_mapper = midi_mapper
 
         self.visualiser_windows: dict[bytes, Any] = {}
 
@@ -96,7 +99,9 @@ class MainWindow(QMainWindow):
         self.controller_list.identify_requested.connect(self.on_identify_requested)
         self.controller_list.setup_wizard_requested.connect(self.open_provisioning_wizard)
 
-        self.config_panel = controller_config_panel.ControllerConfigPanel()
+        self.config_panel = controller_config_panel.ControllerConfigPanel(
+            midi_mapper=self.midi_mapper,
+        )
         self.config_panel.setMinimumWidth(max(320, base_char_width * 45))
         splitter.addWidget(self.controller_list)
         splitter.addWidget(self.config_panel)
@@ -227,8 +232,8 @@ class MainWindow(QMainWindow):
         )
         wizard.exec_()
 
-
 def launch_ui(
+    midi_mapper: MidiMapper,
     provisioning_service: ProvisioningService | None = None,
     communication_thread: CommunicationThread | None = None,
 ):
@@ -248,6 +253,7 @@ def launch_ui(
     main_win = MainWindow(
         provisioning_service=provisioning_service,
         communication_thread=communication_thread,
+        midi_mapper=midi_mapper,
     )
     main_win.show()
     return app.exec_()

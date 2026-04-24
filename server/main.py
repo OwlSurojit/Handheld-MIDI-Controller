@@ -62,6 +62,7 @@ def main():
         launch_ui(
             provisioning_service=provisioning_service,
             communication_thread=recv_thread,
+            midi_mapper=mapper,
         )
     else:
         # If no UI, just wait for Ctrl+C

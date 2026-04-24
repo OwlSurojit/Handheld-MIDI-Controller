@@ -4,6 +4,7 @@ import numpy as np
 from typing import Protocol
 
 from server.shared_state import controllers
+from server.midi_learn import MidiLearnEngine
 from server.controller_state import ControllerState
 from server.midi_output import MIDIOutput
 from server.config import get_effective_controller_config
@@ -22,12 +23,18 @@ class MidiMapper(threading.Thread):
         self.stop_event = stop_event
         self.haptic_sender = haptic_sender
         self.last_cc_values = {} # (controller_id, cc_number) -> value
+        self.midi_learn = MidiLearnEngine()
 
     def run(self):
         """The main processing loop of the server."""        
         print("Starting processing loop...")
         
         while not self.stop_event.is_set():
+            if self.midi_learn.is_active():
+                self.midi_learn.tick(self.midi_out)
+                time.sleep(0.001)
+                continue
+
             active_controllers = list(controllers.values())
             if not active_controllers:
                 time.sleep(0.01)
@@ -41,6 +48,13 @@ class MidiMapper(threading.Thread):
 
         print("Processing loop stopped.")
 
+    def set_midi_learn_mode(self, midi_channel: int, mapping_cfg: dict) -> None:
+        for state in controllers.values():
+            self.send_all_notes_off(state)
+        self.midi_learn.activate(midi_channel, mapping_cfg)
+
+    def clear_midi_learn_mode(self) -> None:
+        self.midi_learn.deactivate()
 
     def process(self, state: ControllerState):
         state.process_raw_data()

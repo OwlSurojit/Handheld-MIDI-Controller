@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QMessageBox,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -24,6 +25,8 @@ from server.scales import CUSTOM_SCALE_NAME, SCALES, get_scale
 from server.ui.dialogs.hit_advanced_dialog import HitAdvancedDialog
 from server.ui.dialogs.mapping_config_dialog import MappingConfigDialog
 from server.config_consts import MAPPING_NAME_PRESETS, MAPPING_SOURCE_OPTIONS, NEW_MAPPING_TEMPLATE
+from server.shared_state import controllers
+from server.midi_mapper import MidiMapper
 from server.ui.widgets.scale_selector import PianoScaleWidget
 
 
@@ -144,6 +147,7 @@ def _common_mapping_rows(configs: list[dict]) -> list[tuple[tuple[str, int], dic
 class MappingRow(QFrame):
     changed = pyqtSignal()
     remove_requested = pyqtSignal(object)
+    midi_learn_requested = pyqtSignal(object)
 
     def __init__(self, row_key: tuple[str, int], mapping_cfg: dict, parent=None):
         super().__init__(parent)
@@ -188,6 +192,12 @@ class MappingRow(QFrame):
             self.source_combo.setCurrentText(str(display_value))
         self.source_combo.currentTextChanged.connect(self._on_source_changed)
         layout.addWidget(self.source_combo, 2)
+
+        self.learn_btn = QToolButton()
+        self.learn_btn.setIcon(qta.icon("fa5s.graduation-cap", color="#2d7d46"))
+        self.learn_btn.setToolTip("MIDI learn: send test pulses for this mapping")
+        self.learn_btn.clicked.connect(lambda: self.midi_learn_requested.emit(self))
+        layout.addWidget(self.learn_btn)
 
         self.config_btn = QToolButton()
         self.toggle_enabled_btn = QToolButton()
@@ -287,12 +297,17 @@ class MappingRow(QFrame):
 
 
 class ControllerConfigPanel(QWidget):
-    def __init__(self, parent=None):
+    def __init__(
+        self,
+        midi_mapper: MidiMapper,
+        parent=None,
+    ):
         super().__init__(parent)
         self.controller_macs: list[bytes] = []
         self._loaded_for: tuple[bytes, ...] | None = None
         self._loaded_row_keys: set[tuple[str, int]] = set()
         self._loading = False
+        self._midi_mapper = midi_mapper
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -428,9 +443,39 @@ class ControllerConfigPanel(QWidget):
         row = MappingRow(row_key, cfg, self)
         row.changed.connect(self._persist_mappings)
         row.remove_requested.connect(self._remove_mapping_row)
+        row.midi_learn_requested.connect(self._start_mapping_midi_learn)
         insert_at = max(self.mapping_layout.count() - 1, 0)
         self.mapping_layout.insertWidget(insert_at, row)
         self.mapping_rows.append(row)
+
+    def _resolve_row_mapping_for_controller(self, mac: bytes, row_key: tuple[str, int]) -> dict:
+        mappings = list(get_effective_controller_config(mac).get("mappings", []))
+        mapping_idx = _mapping_index_map(mappings)
+        idx = mapping_idx[row_key]
+        return dict(mappings[idx])
+
+    def _start_mapping_midi_learn(self, row: MappingRow):
+        if len(self.controller_macs) != 1:
+            QMessageBox.information(
+                self,
+                "MIDI Learn",
+                "Select exactly one controller to run MIDI learn for a mapping.",
+            )
+            return
+
+        controller_mac = self.controller_macs[0]
+        mapping_cfg = self._resolve_row_mapping_for_controller(controller_mac, row.row_key)
+        midi_channel = controllers[controller_mac].midi_channel
+        self._midi_mapper.set_midi_learn_mode(midi_channel, mapping_cfg)
+
+        # Needs to be an about box to suppress the annoying sound
+        QMessageBox.about(
+            self,
+            "MIDI Learn Active",
+            "The app is now sending test MIDI data on this mapping's channel.\n"
+            "In your DAW or VST, enable MIDI learn and bind the target control now.\n"
+            "Close this dialog to stop MIDI learn and return to normal operation.",
+        )
 
     def _remove_mapping_row(self, row: MappingRow):
         if row not in self.mapping_rows:
