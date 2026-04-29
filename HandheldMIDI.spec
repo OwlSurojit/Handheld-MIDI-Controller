@@ -73,5 +73,6 @@ if is_macos:
             "CFBundleShortVersionString": APP_VERSION,
             "CFBundleVersion": APP_VERSION,
             "LSMinimumSystemVersion": "11.0",
+            "NSLocationUsageDescription": "In order to discover the controllers, the app needs to scan for WiFi networks, which requires location access on macOS."
         },
     )
