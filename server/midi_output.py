@@ -1,11 +1,13 @@
 import rtmidi
-import pytemidi
 import sys
 import ctypes
 from rtmidi.midiconstants import (
     NOTE_ON, NOTE_OFF, CONTROL_CHANGE, PITCH_BEND
 )
-from pytemidi.pytemidi import virtualMIDISendData
+
+if sys.platform.startswith("win"):
+    import pytemidi
+    from pytemidi.pytemidi import virtualMIDISendData
 
 
 class MIDIOutput:
@@ -90,7 +92,7 @@ class MIDIOutput:
 
     def _create_te_virtual_port(self):
         try:
-            self._te_device = pytemidi.Device(self._port_name, no_input=True)
+            self._te_device = pytemidi.Device(self._port_name, no_input=True) # type: ignore
             self._te_device.create()
         except Exception as exc:
             self._last_error = f"Failed to create teVirtualMIDI port: {exc}"
@@ -115,7 +117,7 @@ class MIDIOutput:
     def _send_message(self, data):
         if self._use_te_virtual and self._te_device is not None:
             c_buf = ctypes.cast(ctypes.c_char_p(bytes(data)), ctypes.POINTER(ctypes.c_ubyte))
-            ret = virtualMIDISendData(self._te_device._id, c_buf, len(data))
+            ret = virtualMIDISendData(self._te_device._id, c_buf, len(data)) # type: ignore
             if ret != 1:
                 self._last_error = f"Failed to send MIDI message via teVirtualMIDI: {ctypes.GetLastError()}"
                 print(f"Error: {self._last_error}")
