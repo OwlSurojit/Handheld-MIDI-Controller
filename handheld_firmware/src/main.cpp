@@ -39,8 +39,8 @@ uint8_t MAC_ADDR[6];
 IPAddress UDP_BROADCAST_IP(255, 255, 255, 255); // Broadcast address for discovery
 IPAddress SERVER_IP(0, 0, 0, 0);                // Server IP (set after discovery)
 bool discovered = false;                        // Whether we've discovered the server
-const uint16_t UDP_REMOTE_PORT = 5005;          // Receiver UDP port
-const uint16_t UDP_LOCAL_PORT = 5005;           // Local UDP port on the Pico W
+const uint16_t UDP_REMOTE_PORT = 9367; // YENS  // Receiver UDP port
+const uint16_t UDP_LOCAL_PORT = 9367;  // YENS  // Local UDP port on the Pico W
 
 const ProvisioningSettings PROVISIONING_SETTINGS = {
     .udpRemotePort = UDP_REMOTE_PORT,

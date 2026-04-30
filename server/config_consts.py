@@ -47,7 +47,7 @@ DEFAULT_CONTROLLER_CONFIG: Dict[str, Any] = {
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "network": {
-        "udp_port": 5005,
+        "udp_port": 9367,
         "midi_port_name": "Handheld MIDI Controller",
         "midi_backend": "auto",
     },
