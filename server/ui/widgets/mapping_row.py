@@ -59,7 +59,7 @@ class MappingRow(QFrame):
         layout.addWidget(self.source_combo, 2)
 
         self.learn_btn = QToolButton()
-        self.learn_btn.setIcon(qta.icon("fa5s.graduation-cap", color="#2d7d46"))
+        self.learn_btn.setIcon(qta.icon("fa5s.graduation-cap"))
         self.learn_btn.setToolTip("MIDI learn: send test pulses for this mapping")
         self.learn_btn.clicked.connect(lambda: self.midi_learn_requested.emit(self))
         layout.addWidget(self.learn_btn)

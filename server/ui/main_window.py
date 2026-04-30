@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
         self.controller_list.rezero_selected_requested.connect(self.on_rezero_selected)
         self.controller_list.identify_requested.connect(self.on_identify_requested)
         self.controller_list.setup_wizard_requested.connect(self.open_provisioning_wizard)
+        self.controller_list.config_refresh_requested.connect(lambda: self._refresh_panel_selection(force_reload=True))
 
         self.config_panel = controller_config_panel.ControllerConfigPanel(
             midi_mapper=self.midi_mapper,

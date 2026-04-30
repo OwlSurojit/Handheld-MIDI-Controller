@@ -1,7 +1,8 @@
 import copy
 from typing import Any
 
-from PyQt5.QtWidgets import QWidget
+from PyQt5.QtWidgets import QCheckBox, QWidget
+from PyQt5.QtCore import Qt
 
 
 MIXED = object()
@@ -114,3 +115,18 @@ def common_mapping_rows(configs: list[dict[str, Any]]) -> list[tuple[tuple[str, 
         seen_counts[name] = occ + 1
 
     return rows
+
+
+class StrictTristateCheckbox(QCheckBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setTristate(True)
+
+    def nextCheckState(self):
+        """Overrides the default toggle behavior to skip PartChecked"""
+        current = self.checkState()
+        if current == Qt.CheckState.Unchecked:
+            self.setCheckState(Qt.CheckState.Checked)
+        else:
+            # Treats Checked and PartiallyChecked as toggling to Unchecked
+            self.setCheckState(Qt.CheckState.Unchecked)

@@ -2,7 +2,6 @@ from typing import Any, cast
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QGridLayout,
     QGroupBox,
@@ -17,7 +16,7 @@ import server.config as app_config
 from server.config import get_effective_controller_config, update_controller_override
 from server.scales import CUSTOM_SCALE_NAME, SCALES, get_scale
 from server.ui.dialogs.hit_advanced_dialog import HitAdvancedDialog
-from server.ui.widgets.controller_config_helpers import MIXED, deep_apply_patch, merge_dicts, merge_values, to_dialog_data
+from server.ui.widgets.controller_config_helpers import MIXED, StrictTristateCheckbox, deep_apply_patch, merge_dicts, merge_values, to_dialog_data
 from server.ui.widgets.scale_selector import PianoScaleWidget
 
 
@@ -32,12 +31,10 @@ class HitMachineConfigGroup(QGroupBox):
         hit_layout.setHorizontalSpacing(8)
         hit_layout.setVerticalSpacing(8)
 
-        self.hit_enabled = QCheckBox("Enabled")
-        self.hit_enabled.setTristate(True)
+        self.hit_enabled = StrictTristateCheckbox("Enabled")
         self.hit_enabled.stateChanged.connect(self._on_hit_basic_changed)
 
-        self.flick_release_enabled = QCheckBox("Flick up to release")
-        self.flick_release_enabled.setTristate(True)
+        self.flick_release_enabled = StrictTristateCheckbox("Flick up to release")
         self.flick_release_enabled.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.flick_release_enabled.stateChanged.connect(self._on_hit_basic_changed)
 

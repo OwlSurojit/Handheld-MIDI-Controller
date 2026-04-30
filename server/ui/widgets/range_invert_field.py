@@ -1,7 +1,9 @@
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QCheckBox, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QVBoxLayout, QWidget
 from superqt import QLabeledDoubleRangeSlider
 from numpy import interp
+
+from server.ui.widgets.controller_config_helpers import StrictTristateCheckbox
 
 
 class RangeInvertField(QWidget):
@@ -22,9 +24,9 @@ class RangeInvertField(QWidget):
         self.range_slider.setMinimumWidth(slider_min_width)
         self.range_slider.valueChanged.connect(self.range_changed.emit)
 
-        self.invert_checkbox = QCheckBox(checkbox_label)
+        self.invert_checkbox = StrictTristateCheckbox(checkbox_label)
         self.invert_checkbox.setChecked(bool(invert))
-        self.invert_checkbox.toggled.connect(self.invert_changed.emit)
+        self.invert_checkbox.stateChanged.connect(self.invert_changed.emit)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

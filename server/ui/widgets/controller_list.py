@@ -1,8 +1,11 @@
-from PyQt5.QtCore import QEvent, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QKeySequence, QPalette
-from PyQt5.QtWidgets import QAbstractItemView, QAction, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QVBoxLayout, QWidget, QWidgetAction
+import copy
+import json
 
-from server.config import get_controller_entry, remove_controller_entry
+from PyQt5.QtCore import QEvent, Qt, QTimer, pyqtSignal, QMimeData, QByteArray
+from PyQt5.QtGui import QColor, QKeySequence, QPalette
+from PyQt5.QtWidgets import QApplication, QAbstractItemView, QAction, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox, QPushButton, QVBoxLayout, QWidget, QWidgetAction
+
+from server.config import get_controller_entry, get_effective_controller_config, remove_controller_entry, update_controller_override
 from server.shared_state import controllers, register_controller_removed_callback, register_new_controller_callback, remove_controller
 from server.ui.widgets.controller_card import ControllerCard
 
@@ -18,6 +21,9 @@ class ControllerListWidget(QWidget):
     setup_wizard_requested = pyqtSignal()
     new_controller_signal = pyqtSignal(object)
     controller_removed_signal = pyqtSignal(object)
+    config_refresh_requested = pyqtSignal()
+
+    _CONFIG_CLIPBOARD_MIME = "application/x-handheld-controller-config"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -131,6 +137,10 @@ class ControllerListWidget(QWidget):
 
         self.rebuild()
         self._build_shortcuts()
+        self._clipboard = QApplication.clipboard()
+        if self._clipboard is not None:
+            self._clipboard.dataChanged.connect(self._sync_paste_action_state)
+        self._sync_paste_action_state()
 
     def _build_shortcuts(self):
         def _add_action(text: str, shortcut: str, slot):
@@ -147,6 +157,9 @@ class ControllerListWidget(QWidget):
         self.move_up_action = _add_action("Move up", "Alt+Up", self.move_context_controller_up)
         self.move_down_action = _add_action("Move down", "Alt+Down", self.move_context_controller_down)
         self.remove_action = _add_action("Remove", "Delete", self.remove_context_controller)
+        self.copy_config_action = _add_action("Copy config", "Ctrl+C", self.copy_context_configuration)
+        self.paste_config_action = _add_action("Paste config", "Ctrl+V", self.paste_context_configuration)
+        self.paste_config_action.setEnabled(False)
 
     def _context_target_mac(self) -> bytes | None:
         focused = self.focused_controller
@@ -224,6 +237,63 @@ class ControllerListWidget(QWidget):
             return
         remove_controller_entry(mac)
         remove_controller(mac)
+
+    def _get_clipboard_config(self) -> dict | None:
+        clipboard = QApplication.clipboard()
+        if clipboard is None:
+            return None
+        mime = clipboard.mimeData()
+        if mime is None or not mime.hasFormat(self._CONFIG_CLIPBOARD_MIME):
+            return None
+        try:
+            payload = bytes(mime.data(self._CONFIG_CLIPBOARD_MIME)).decode("utf-8")
+            data = json.loads(payload)
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        if "mappings" not in data or "hit" not in data:
+            return None
+        return data
+
+    def _sync_paste_action_state(self) -> None:
+        if hasattr(self, "paste_config_action"):
+            self.paste_config_action.setEnabled(self._get_clipboard_config() is not None)
+
+    def copy_context_configuration(self) -> None:
+        mac = self._context_target_mac()
+        if mac is None:
+            return
+        clipboard = QApplication.clipboard()
+        if clipboard is None:
+            return
+        cfg = get_effective_controller_config(mac)
+        payload = {
+            "mappings": copy.deepcopy(cfg.get("mappings", [])),
+            "hit": copy.deepcopy(cfg.get("hit", {})),
+        }
+        mime = QMimeData()
+        mime.setData(
+            self._CONFIG_CLIPBOARD_MIME,
+            QByteArray(json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")),
+        )
+        clipboard.setMimeData(mime)
+        self._sync_paste_action_state()
+
+    def paste_context_configuration(self) -> None:
+        mac = self._context_target_mac()
+        if mac is None:
+            return
+        data = self._get_clipboard_config()
+        if data is None:
+            return
+        targets = self.selected_controller_ids()
+        if not targets:
+            targets = {mac}
+        for target in targets:
+            update_controller_override(target, ["mappings"], copy.deepcopy(data.get("mappings", [])))
+            update_controller_override(target, ["hit"], copy.deepcopy(data.get("hit", {})))
+        self.config_refresh_requested.emit()
 
     def eventFilter(self, a0, a1):
         if a0 is self._list_viewport and a1 is not None and a1.type() in (QEvent.Type.Resize, QEvent.Type.Show) and self._list_viewport is not None:
@@ -341,6 +411,9 @@ class ControllerListWidget(QWidget):
         menu.addAction(self.details_action)
         menu.addAction(self.identify_action)
         menu.addAction(self.visualise_action)
+        menu.addSeparator()
+        menu.addAction(self.copy_config_action)
+        menu.addAction(self.paste_config_action)
         menu.addSeparator()
         menu.addAction(self.move_up_action)
         menu.addAction(self.move_down_action)
