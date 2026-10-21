@@ -17,6 +17,7 @@
 #include "imu_logic.h"
 #include "battery_measurement.h"
 #include "vibration_motor_utils.h"
+#include "button_logic.h"
 #include <Adafruit_NeoPixel.h>
 
 
@@ -30,7 +31,7 @@ void setup() {
 
     eeprom_init();
 
-    pinMode(RESET_REZERO_BUTTON_PIN, INPUT_PULLUP);
+    setupButtons();
     pinMode(HAPTIC_MOTOR_PIN, OUTPUT);
     digitalWrite(HAPTIC_MOTOR_PIN, LOW);
     setupBatteryMeasurement();
@@ -48,34 +49,8 @@ void setup() {
     initializeIMU();
 }
 
-unsigned long resetButtonHeldSince = 0;
-
-void handleResetRezero() {
-    if (digitalRead(RESET_REZERO_BUTTON_PIN) == LOW) {
-        if (resetButtonHeldSince == 0) {
-            resetButtonHeldSince = millis();
-        } else if (millis() - resetButtonHeldSince >= HOLD_RESET_MS && millis() - resetButtonHeldSince < HOLD_RESET_MS + 1000) {
-            pulseVibration(1000, 0, 1);
-        } else if (millis() - resetButtonHeldSince >= HOLD_REBOOT_MS && millis() - resetButtonHeldSince < HOLD_REBOOT_MS + 250) {
-            pulseVibration(250, 0, 1);
-        }
-    } else if (resetButtonHeldSince != 0) {
-        if (millis() - resetButtonHeldSince >= HOLD_RESET_MS) {
-            Serial.println("Factory reset triggered by long button hold");
-            clearStoredWifiCredentials();
-            deleteStoredSensorBiases();
-            rp2040.reboot();
-        } else if (millis() - resetButtonHeldSince >= HOLD_REBOOT_MS) {
-            rp2040.reboot();
-        } else {
-            // send rezero command
-            resetButtonHeldSince = 0;
-        }
-    }
-}
-
 void loop() {
-    handleResetRezero();
+    handleButtons();
 
     if (!processNetworking()) {
         return;

@@ -18,4 +18,3 @@ struct IMUReading {
 
 void initializeIMU();
 void processIMU();
-void deleteStoredSensorBiases();

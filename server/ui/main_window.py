@@ -1,7 +1,7 @@
 import sys
 import os
 from typing import Any
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -17,6 +17,7 @@ from PyQt5.QtGui import QKeySequence, QPixmap
 from server.config import (
     import_config_from_file,
     set_controller_muted,
+    subscribe,
 )
 from server.communication import CommunicationThread
 from server.midi_mapper import MidiMapper
@@ -30,6 +31,8 @@ from server.ui.widgets.preset_manager import PresetBar
 
 
 class MainWindow(QMainWindow):
+    config_changed = pyqtSignal(int)
+
     def __init__(
         self,
         midi_mapper: MidiMapper,
@@ -42,6 +45,7 @@ class MainWindow(QMainWindow):
         self.provisioning_service = provisioning_service
         self.communication_thread = communication_thread
         self.midi_mapper = midi_mapper
+        self._unsubscribe_config = None
 
         self.visualiser_windows: dict[bytes, Any] = {}
 
@@ -54,6 +58,8 @@ class MainWindow(QMainWindow):
         self._build_top_bar()
         self._build_controller_list()
         self._build_menu_bar()
+        self.config_changed.connect(self._on_config_changed)
+        self._unsubscribe_config = subscribe(self.config_changed.emit)
 
         self._refresh_panel_selection()
 
@@ -130,7 +136,13 @@ class MainWindow(QMainWindow):
             controllers_menu.addAction("Controller Setup Wizard", self.open_provisioning_wizard)
 
     def closeEvent(self, a0):
+        if self._unsubscribe_config is not None:
+            self._unsubscribe_config()
+            self._unsubscribe_config = None
         super().closeEvent(a0)
+
+    def _on_config_changed(self, _version: int):
+        self._refresh_panel_selection(force_reload=True)
 
     def on_focused_controller_changed(self, _controller_mac):
         self._refresh_panel_selection()

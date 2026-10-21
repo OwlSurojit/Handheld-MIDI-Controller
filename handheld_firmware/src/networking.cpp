@@ -31,6 +31,7 @@ enum PacketType : uint8_t {
     HAPTIC_FEEDBACK = 0x04,         // Haptic feedback command
     IDENTIFY_REQUEST = 0x05,        // Host triggers a short identify vibration
     BATTERY_MEASUREMENT = 0x06,     // Battery level measurement
+    MODE_SWITCH_STATE = 0x07,       // Mode switch state change
     PROVISIONING_SET_WIFI = 0x10,   // Server sends Wi-Fi credentials to controller
     PROVISIONING_ACK = 0x11,        // Controller acknowledges Wi-Fi credentials
     LATENCY_CHECK = 0xFF            // Latency test echo packet
@@ -74,6 +75,12 @@ struct __attribute__((packed)) BatteryMeasurementPacket {
     uint8_t type; // BATTERY_MEASUREMENT
     uint8_t mac[6];
     uint8_t percentage;
+};
+
+struct __attribute__((packed)) ModeSwitchStatePacket {
+    uint8_t type; // MODE_SWITCH_STATE
+    uint8_t mac[6];
+    uint8_t mode; // 0 = Hit, 1 = Both, 2 = Map
 };
 
 uint8_t macAddress[6];
@@ -142,10 +149,6 @@ void handleIdentifyRequest() {
     }
 }
 } // namespace
-
-void clearStoredWifiCredentials() {
-    wifiCredentialsClear();
-}
 
 void initializeNetworking() {
     WiFi.mode(WIFI_STA);
@@ -224,6 +227,17 @@ void sendBatteryMeasurement(uint8_t percentage) {
     BatteryMeasurementPacket packet = {
         .type = BATTERY_MEASUREMENT,
         .percentage = percentage};
+    memcpy(packet.mac, macAddress, 6);
+    if (discovered) {
+        sendUdpPacket(packet, serverIp);
+    }
+}
+
+// TODO what if this packet gets lost?
+void sendModeSwitchState(uint8_t mode) {
+    ModeSwitchStatePacket packet = {
+        .type = MODE_SWITCH_STATE,
+        .mode = mode};
     memcpy(packet.mac, macAddress, 6);
     if (discovered) {
         sendUdpPacket(packet, serverIp);

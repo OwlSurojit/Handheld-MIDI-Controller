@@ -41,6 +41,7 @@ DEFAULT_CONTROLLER_CONFIG: Dict[str, Any] = {
     "name": "",
     "midi_channel": None,
     "muted": False,
+    "mappings_enabled": True,
     "mappings": [],
     "hit": {},
 }
@@ -53,6 +54,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "controllers": {},
     "defaults": {
+        "mappings_enabled": True,
         "mappings": [
             {
                 "name": "volume",

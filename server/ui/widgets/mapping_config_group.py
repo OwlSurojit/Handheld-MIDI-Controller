@@ -1,5 +1,6 @@
 import copy
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from server.config import get_effective_controller_config, update_controller_override
@@ -11,6 +12,9 @@ from server.ui.widgets.controller_config_helpers import (
     common_mapping_rows,
     deep_apply_patch,
     mapping_index_map,
+    MIXED,
+    merge_values,
+    StrictTristateCheckbox,
 )
 from server.ui.widgets.mapping_row import MappingRow
 
@@ -23,10 +27,19 @@ class MappingConfigGroup(QGroupBox):
         self._loading = False
         self._midi_mapper = midi_mapper
         self.mapping_rows: list[MappingRow] = []
+        self.mapping_enabled = StrictTristateCheckbox("Enabled")
+        self.mapping_enabled.stateChanged.connect(self._on_mapping_enabled_changed)
 
         self.mapping_layout = QVBoxLayout(self)
         self.mapping_layout.setContentsMargins(8, 8, 8, 8)
         self.mapping_layout.setSpacing(6)
+
+        enabled_row = QWidget(self)
+        enabled_layout = QHBoxLayout(enabled_row)
+        enabled_layout.setContentsMargins(0, 0, 0, 0)
+        enabled_layout.addWidget(self.mapping_enabled)
+        enabled_layout.addStretch()
+        self.mapping_layout.addWidget(enabled_row)
 
         headers_row = QWidget(self)
         headers_layout = QHBoxLayout(headers_row)
@@ -119,11 +132,22 @@ class MappingConfigGroup(QGroupBox):
         self._clear_mapping_rows()
 
         if not self.controller_macs:
+            self.mapping_enabled.blockSignals(True)
+            self.mapping_enabled.setCheckState(Qt.CheckState.Unchecked)
+            self.mapping_enabled.blockSignals(False)
             self._loaded_row_keys = set()
             self._loading = False
             return
 
         configs = [get_effective_controller_config(mac) for mac in self.controller_macs]
+        enabled_value = merge_values([bool(cfg.get("mappings_enabled", True)) for cfg in configs])
+        self.mapping_enabled.blockSignals(True)
+        self.mapping_enabled.setCheckState(
+            Qt.CheckState.PartiallyChecked
+            if enabled_value is MIXED
+            else Qt.CheckState.Checked if enabled_value else Qt.CheckState.Unchecked
+        )
+        self.mapping_enabled.blockSignals(False)
         common_rows = common_mapping_rows(configs)
         self._loaded_row_keys = {row_key for row_key, _map_cfg in common_rows}
         for row_key, map_cfg in common_rows:
@@ -131,6 +155,18 @@ class MappingConfigGroup(QGroupBox):
 
         self._loading = False
 
+    def _on_mapping_enabled_changed(self, *_args):
+        if self._loading or not self.controller_macs:
+            return
+        state = self.mapping_enabled.checkState()
+        if state == Qt.CheckState.PartiallyChecked:
+            return
+        for mac in self.controller_macs:
+            update_controller_override(
+                mac,
+                ["mappings_enabled"],
+                state == Qt.CheckState.Checked,
+            )
     def _add_mapping(self):
         if not self.controller_macs:
             return

@@ -172,6 +172,8 @@ class MidiMapper(threading.Thread):
         self.haptic_sender.send_haptic_feedback(state.mac, command, duration_ms)
 
     def _process_mappings(self, state: ControllerState, cfg):
+        if not bool(cfg.get('mappings_enabled', True)):
+            return
         mappings = cfg.get('mappings', [])
         for m in mappings:
             if not isinstance(m, dict):

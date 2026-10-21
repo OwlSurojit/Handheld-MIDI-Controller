@@ -269,6 +269,7 @@ class ControllerListWidget(QWidget):
             return
         cfg = get_effective_controller_config(mac)
         payload = {
+            "mappings_enabled": bool(cfg.get("mappings_enabled", True)),
             "mappings": copy.deepcopy(cfg.get("mappings", [])),
             "hit": copy.deepcopy(cfg.get("hit", {})),
         }
@@ -291,6 +292,11 @@ class ControllerListWidget(QWidget):
         if not targets:
             targets = {mac}
         for target in targets:
+            update_controller_override(
+                target,
+                ["mappings_enabled"],
+                bool(data.get("mappings_enabled", True)),
+            )
             update_controller_override(target, ["mappings"], copy.deepcopy(data.get("mappings", [])))
             update_controller_override(target, ["hit"], copy.deepcopy(data.get("hit", {})))
         self.config_refresh_requested.emit()

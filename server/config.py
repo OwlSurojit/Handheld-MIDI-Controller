@@ -191,7 +191,6 @@ def _normalize_controller_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
     merged["name"] = name_value
 
     merged["muted"] = bool(merged.get("muted", False))
-
     merged["mappings"] = _normalize_mappings(merged.get("mappings", []))
 
     if "hit" in merged and isinstance(merged.get("hit"), dict):
@@ -283,6 +282,7 @@ def normalize_config(config: Dict[str, Any]) -> Dict[str, Any]:
     merged["controllers"] = normalized_controllers
 
     defaults_cfg = dict(merged.get("defaults", {}))
+    defaults_cfg["mappings_enabled"] = bool(defaults_cfg.get("mappings_enabled", True))
     defaults_cfg["mappings"] = _normalize_mappings(defaults_cfg.get("mappings", []))
     defaults_cfg["hit"] = _normalize_hit_config(defaults_cfg.get("hit", {}))
     merged["defaults"] = defaults_cfg
@@ -584,6 +584,7 @@ def get_effective_controller_config(controller_mac: bytes | str) -> Dict[str, An
         controller_cfg = copy.deepcopy(config.get("controllers", {}).get(_mac_key(controller_mac), {}))
 
     effective = {
+        "mappings_enabled": bool(defaults.get("mappings_enabled", True)),
         "mappings": _normalize_mappings(defaults.get("mappings", [])),
         "hit": _normalize_hit_config(defaults.get("hit", {})),
         "muted": bool(controller_cfg.get("muted", False)),
@@ -592,6 +593,8 @@ def get_effective_controller_config(controller_mac: bytes | str) -> Dict[str, An
     controller_mappings = _normalize_mappings(controller_cfg.get("mappings", []))
     if controller_mappings:
         effective["mappings"] = controller_mappings
+    if "mappings_enabled" in controller_cfg:
+        effective["mappings_enabled"] = bool(controller_cfg["mappings_enabled"])
 
     controller_hit = controller_cfg.get("hit", {})
     if isinstance(controller_hit, dict):

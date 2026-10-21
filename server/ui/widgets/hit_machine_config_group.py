@@ -16,7 +16,14 @@ import server.config as app_config
 from server.config import get_effective_controller_config, update_controller_override
 from server.scales import CUSTOM_SCALE_NAME, SCALES, get_scale
 from server.ui.dialogs.hit_advanced_dialog import HitAdvancedDialog
-from server.ui.widgets.controller_config_helpers import MIXED, StrictTristateCheckbox, deep_apply_patch, merge_dicts, merge_values, to_dialog_data
+from server.ui.widgets.controller_config_helpers import (
+    MIXED,
+    StrictTristateCheckbox,
+    deep_apply_patch,
+    merge_dicts,
+    merge_values,
+    to_dialog_data,
+)
 from server.ui.widgets.scale_selector import PianoScaleWidget
 
 

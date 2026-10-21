@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from queue import Empty, Full, Queue
 
-from server.config import get_config
+from server.config import get_config, update_many
 from server.provisioning_service import ProvisioningService
 from server.shared_state import controllers, get_controller, has_controller
 
@@ -19,6 +19,7 @@ SENSOR_DATA = 0x03
 HAPTIC_FEEDBACK = 0x04
 IDENTIFY_REQUEST = 0x05
 BATTERY_MEASUREMENT = 0x06
+MODE_SWITCH_STATE = 0x07
 LATENCY_CHECK = 0xFF
 
 # Discovery request: type + 6 bytes MAC
@@ -53,6 +54,10 @@ _SOCKET_TIMEOUT_SEC = 0.002
 # Battery measurement: type + 6 bytes MAC + int percentage
 _BATTERY_MEASUREMENT_FORMAT = '<B6sB'
 _BATTERY_MEASUREMENT_SIZE = struct.calcsize(_BATTERY_MEASUREMENT_FORMAT)
+
+# Mode Switch state: type + 6 bytes MAC + 1 byte mode
+_MODE_SWITCH_STATE_FORMAT = '<B6sB'
+_MODE_SWITCH_STATE_SIZE = struct.calcsize(_MODE_SWITCH_STATE_FORMAT)
 
 
 @dataclass(frozen=True)
@@ -182,12 +187,29 @@ class CommunicationThread(threading.Thread):
 
         if state.source_ip != addr[0]:
             state.source_ip = addr[0]
-            
+
     def _handle_battery_measurement(self, raw: bytes, addr: tuple[str, int]) -> None:
         _, mac, percentage = struct.unpack(_BATTERY_MEASUREMENT_FORMAT, raw)
         state = get_controller(mac, addr[0])
         state.last_packet_time = time.monotonic()
         state.battery_percentage = percentage
+
+        if state.source_ip != addr[0]:
+            state.source_ip = addr[0]
+            
+    def _handle_mode_switch_state(self, raw: bytes, addr: tuple[str, int]) -> None:
+        _, mac, mode = struct.unpack(_MODE_SWITCH_STATE_FORMAT, raw)
+        state = get_controller(mac, addr[0])
+        state.last_packet_time = time.monotonic()
+        # MODE switch state: 0 = Hit, 1 = Both, 2 = Map
+        if mode not in (0, 1, 2):
+            print(f"Ignoring invalid mode {mode} from controller {mac.hex()}")
+        else:
+            mac_key = mac.hex().lower()
+            update_many([
+                (["controllers", mac_key, "hit", "enabled"], mode in (0, 1)),
+                (["controllers", mac_key, "mappings_enabled"], mode in (1, 2)),
+            ])
 
         if state.source_ip != addr[0]:
             state.source_ip = addr[0]
@@ -233,6 +255,8 @@ class CommunicationThread(threading.Thread):
             self._handle_sensor_data(raw, addr)
         elif packet_type == BATTERY_MEASUREMENT and len(raw) == _BATTERY_MEASUREMENT_SIZE:
             self._handle_battery_measurement(raw, addr)
+        elif packet_type == MODE_SWITCH_STATE and len(raw) == _MODE_SWITCH_STATE_SIZE:
+            self._handle_mode_switch_state(raw, addr)
 
     def run(self) -> None:
         print(f"Listening for controller data on UDP port {self.udp_port}...")
@@ -257,4 +281,3 @@ class CommunicationThread(threading.Thread):
         finally:
             sock.close()
             print("Communication thread stopped.")
-

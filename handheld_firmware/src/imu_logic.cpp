@@ -104,10 +104,6 @@ void initializeIMU() {
     calibrationStartTime = millis();
 }
 
-void deleteStoredSensorBiases() {
-    deleteStoredBiases();
-}
-
 void processIMU() {
     analogRead(BATTERY_VOLTAGE_PIN);
     readSensorFrame();
