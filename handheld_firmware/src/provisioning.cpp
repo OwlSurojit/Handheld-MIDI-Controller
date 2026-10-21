@@ -1,5 +1,7 @@
 #include "provisioning.h"
+#include "consts.h"
 #include "wifi_credentials_store.h"
+#include "vibration_motor_utils.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -73,10 +75,10 @@ static void sendProvisioningAck(
     }
 }
 
-bool isProvisioningButtonHeldOnBoot(uint8_t buttonPin, uint32_t holdMs) {
+bool isProvisioningButtonHeldOnBoot(uint32_t holdMs) {
     unsigned long holdStart = millis();
     while (millis() - holdStart < holdMs) {
-        if (digitalRead(buttonPin) != LOW) {
+        if (digitalRead(RESET_REZERO_BUTTON_PIN) != LOW) {
             return false;
         }
         delay(20);
@@ -137,8 +139,7 @@ void enterProvisioningAPMode(
     WiFiUDP &udp,
     uint8_t macAddr[6],
     const ProvisioningSettings &settings,
-    bool wipedCredentials,
-    PulseHapticCallback pulseHaptic) {
+    bool wipedCredentials) {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_AP);
     delay(100);
@@ -173,8 +174,8 @@ void enterProvisioningAPMode(
     Serial.print("AP IP: ");
     Serial.println(WiFi.softAPIP());
 
-    if (wipedCredentials && pulseHaptic) {
-        pulseHaptic(80, 70, 3);
+    if (wipedCredentials) {
+        pulseVibration(80, 70, 3);
     }
 
     while (true) {
@@ -220,9 +221,7 @@ void enterProvisioningAPMode(
 
             sendProvisioningAck(udp, macAddr, settings, settings.ackOk, udp.remoteIP());
             Serial.println("Provisioning payload accepted. Rebooting into STA mode...");
-            if (pulseHaptic) {
-                pulseHaptic(120, 80, 2);
-            }
+            pulseVibration(120, 80, 2);
             if (WiFi.disconnectAP()) {
                 Serial.println("AP stopped successfully.");
                 return;

@@ -109,6 +109,10 @@ class ControllerCard(QFrame):
         status_palette = self.status_value.palette()
         status_palette.setColor(QPalette.WindowText, self.palette().color(QPalette.Mid))
         self.status_value.setPalette(status_palette)
+
+        self.battery_value = QLabel()
+        self.battery_value.setPalette(status_palette)
+        bottom_row.addWidget(self.battery_value)
         bottom_row.addWidget(self.status_value)
         bottom_row.addStretch(1)
 
@@ -207,6 +211,12 @@ class ControllerCard(QFrame):
         self._data_rate_hz = rate_hz
         self._refresh_status_line()
 
+    def set_battery_percentage(self, percentage: int | None):
+        if percentage is None:
+            self.battery_value.setText("Battery: -")
+        else:
+            self.battery_value.setText(f"Battery: {percentage}%")
+
     def _refresh_status_line(self):
         data_rate_text = "-"
         if self._data_rate_hz is not None:
@@ -231,3 +241,4 @@ class ControllerCard(QFrame):
         self.set_latency_ms(self.state.get_one_way_latency_ms())
         self.set_muted(self.state.is_muted())
         self.set_data_rate(self.state.get_data_rate())
+        self.set_battery_percentage(self.state.battery_percentage)

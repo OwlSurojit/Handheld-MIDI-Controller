@@ -7,6 +7,7 @@ from server.quaternion_utils import Quat
 class ControllerState:
 
     TWIST_AXIS = np.array([0,1,0])
+    SENSOR_ORIENTATION_QUAT = Quat.from_array([0.7071068, 0, 0, 0.7071068])  # 90 degrees rotation around z axis
     HISTORY_LEN = 500
 
     """Holds the state for a single connected controller."""
@@ -21,6 +22,8 @@ class ControllerState:
         self.last_packet_time = 0.0
         self.raw_data_queue = deque(maxlen=1)
         self._lock = threading.Lock()
+        
+        self.battery_percentage = 100  # Battery percentage (0-100), updated from controller packets
 
         # One-Euro filters for all 10 incoming signals
         # The parameters can be tuned in config.yaml for each mapping
@@ -97,9 +100,13 @@ class ControllerState:
             except IndexError:
                 return # No new data
 
+            # Apply sensor orientation matrix to correct the orientation
             self.quat = Quat.from_array(raw_quat).normalize()
             self.accel = np.array(raw_accel)
             self.gyro = np.array(raw_gyro)
+            self.quat = ControllerState.SENSOR_ORIENTATION_QUAT * self.quat
+            self.accel = ControllerState.SENSOR_ORIENTATION_QUAT.rotate_vector(self.accel)
+            self.gyro = ControllerState.SENSOR_ORIENTATION_QUAT.rotate_vector(self.gyro)
 
             # 2. Calculate derived values
             self.q_delta = self.q_ref.conjugate() * self.quat

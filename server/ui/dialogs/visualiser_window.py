@@ -11,6 +11,7 @@ class VisualiserWindow(QWidget):
     PLOT_UPDATE_EVERY_N_FRAMES = 3
     TEXT_UPDATE_EVERY_N_FRAMES = 1
     HISTORY_SIZE = 150
+    BOX_DIMENSIONS = (5, 2, 1)  # Width, Depth, Height
 
     def __init__(self, controller_mac):
         super().__init__()
@@ -38,7 +39,7 @@ class VisualiserWindow(QWidget):
         # Add grid and dummy 3D axis/box
         grid = gl.GLGridItem(antialias=False)
         self.view_3d.addItem(grid)
-        self.box_mesh = gl.GLBoxItem(size=pg.Vector(2, 4, 1), color=(0, 255, 0, 100), glOptions='translucent')
+        self.box_mesh = gl.GLBoxItem(size=pg.Vector(VisualiserWindow.BOX_DIMENSIONS), color=(0, 255, 0, 100), glOptions='translucent')
         self.view_3d.addItem(self.box_mesh)
         # self.accel_vector = gl.GLLinePlotItem(pos=np.array([[0,0,0], [0,0,1]]), color=(1, 0, 0, 255), width=3)
         # self.view_3d.addItem(self.accel_vector)
@@ -149,7 +150,7 @@ class VisualiserWindow(QWidget):
         self.box_mesh.resetTransform()
         # Note: For GLBoxItem, the center is at (width/2, depth/2, height/2).
         # To rotate around origin, we shift it, rotate, and shift back, or just rotate.
-        self.box_mesh.translate(-1, -2, -0.5)
+        self.box_mesh.translate(-VisualiserWindow.BOX_DIMENSIONS[0]/2, -VisualiserWindow.BOX_DIMENSIONS[1]/2, -VisualiserWindow.BOX_DIMENSIONS[2]/2)
         self.box_mesh.rotate(np.degrees(angle), axis[0], axis[1], axis[2])
         # self.accel_vector.setData(pos=np.array([[0,0,0], state.swing_accel]))
         # self.gyro_vector.setData(pos=np.array([[0,0,0], state.swing_gyro / 100]))

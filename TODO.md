@@ -17,14 +17,23 @@
 - GUI
   - Make Controller cards more compact and flex list (grid / horizontal / ...); context menu for details, remove, etc
   - grey out inactive controllers
-  - Bulk apply config   DONE
+  - grey out mapping / hit machine options when disabled
+  - 
 - PROVISIONING
   - detect if there is a wired connection --> don't select current wifi in step 2
   - Prevent constant rescan to keep selecting all controllers   DONE
   - verify SSID and pass before sending it to everyone?
 - identify controller button  DONE
 - macOS
-  - set NSLocationWhenInUseUsageDescription in Info.plist somehow
+  - set NSLocationUsageDescription in Info.plist somehow
+- firmware
+  - Implement Battery Monitor
+  - Implement Mode Switch
+  - Implement Sustain Pedal
+  - LED Ring
+    - choose desired functions
+    - make library
+    - implement where desired
 
 # BUGS
 - Every now and again there is a massive random spike in accel or gyro data --> maybe we will need to bring back some kind of filter...

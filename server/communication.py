@@ -18,6 +18,7 @@ DISCOVERY_RESPONSE = 0x02
 SENSOR_DATA = 0x03
 HAPTIC_FEEDBACK = 0x04
 IDENTIFY_REQUEST = 0x05
+BATTERY_MEASUREMENT = 0x06
 LATENCY_CHECK = 0xFF
 
 # Discovery request: type + 6 bytes MAC
@@ -48,6 +49,10 @@ _MAX_PACKET_SIZE = max(
     ProvisioningService.max_packet_size(),
 )
 _SOCKET_TIMEOUT_SEC = 0.002
+
+# Battery measurement: type + 6 bytes MAC + int percentage
+_BATTERY_MEASUREMENT_FORMAT = '<B6sB'
+_BATTERY_MEASUREMENT_SIZE = struct.calcsize(_BATTERY_MEASUREMENT_FORMAT)
 
 
 @dataclass(frozen=True)
@@ -177,6 +182,15 @@ class CommunicationThread(threading.Thread):
 
         if state.source_ip != addr[0]:
             state.source_ip = addr[0]
+            
+    def _handle_battery_measurement(self, raw: bytes, addr: tuple[str, int]) -> None:
+        _, mac, percentage = struct.unpack(_BATTERY_MEASUREMENT_FORMAT, raw)
+        state = get_controller(mac, addr[0])
+        state.last_packet_time = time.monotonic()
+        state.battery_percentage = percentage
+
+        if state.source_ip != addr[0]:
+            state.source_ip = addr[0]
 
     def _send_latency_checks(self, now: float, sock: socket.socket) -> None:
         if now < self.next_latency_check:
@@ -217,6 +231,8 @@ class CommunicationThread(threading.Thread):
             self._handle_latency_response(raw, addr)
         elif packet_type == SENSOR_DATA and len(raw) == _SENSOR_DATA_SIZE:
             self._handle_sensor_data(raw, addr)
+        elif packet_type == BATTERY_MEASUREMENT and len(raw) == _BATTERY_MEASUREMENT_SIZE:
+            self._handle_battery_measurement(raw, addr)
 
     def run(self) -> None:
         print(f"Listening for controller data on UDP port {self.udp_port}...")

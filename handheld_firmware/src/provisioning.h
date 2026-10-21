@@ -17,13 +17,10 @@ struct ProvisioningSettings {
     uint8_t ackWrongTarget;
 };
 
-using PulseHapticCallback = void (*)(uint16_t onMs, uint16_t offMs, uint8_t count);
-
-bool isProvisioningButtonHeldOnBoot(uint8_t buttonPin, uint32_t holdMs);
+bool isProvisioningButtonHeldOnBoot(uint32_t holdMs);
 bool connectFromStoredCredentials(const ProvisioningSettings &settings);
 void enterProvisioningAPMode(
     WiFiUDP &udp,
     uint8_t macAddr[6],
     const ProvisioningSettings &settings,
-    bool wipedCredentials,
-    PulseHapticCallback pulseHaptic);
+    bool wipedCredentials);
