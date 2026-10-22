@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-struct IMUReading {
+struct SensorReading {
     uint32_t timestamp;
     float qw;
     float qx;
@@ -14,7 +14,9 @@ struct IMUReading {
     float gx;
     float gy;
     float gz;
+    bool sustainPressed;
 };
 
+SensorReading readSensorFrame();
 void initializeIMU();
-void processIMU();
+void processSensors();

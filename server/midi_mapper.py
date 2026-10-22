@@ -64,6 +64,11 @@ class MidiMapper(threading.Thread):
             return
         self._update_hit_detector(state, cfg)
         self._process_mappings(state, cfg)
+                
+        if state.sustain_pressed:
+            self.midi_out.send_cc(state.midi_channel, 64, 127)  # Sustain pedal ON
+        else:
+            self.midi_out.send_cc(state.midi_channel, 64, 0)    # Sustain pedal OFF
 
     def _update_hit_detector(self, state: ControllerState, cfg):
         hit_cfg = cfg['hit']

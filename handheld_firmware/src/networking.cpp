@@ -32,8 +32,10 @@ enum PacketType : uint8_t {
     IDENTIFY_REQUEST = 0x05,        // Host triggers a short identify vibration
     BATTERY_MEASUREMENT = 0x06,     // Battery level measurement
     MODE_SWITCH_STATE = 0x07,       // Mode switch state change
+    REZERO_COMMAND = 0x08,          // Rezero this controller
     PROVISIONING_SET_WIFI = 0x10,   // Server sends Wi-Fi credentials to controller
     PROVISIONING_ACK = 0x11,        // Controller acknowledges Wi-Fi credentials
+    RELIABLE_PACKET_ACK = 0xFE,     // Acknowledges a reliable controller packet
     LATENCY_CHECK = 0xFF            // Latency test echo packet
 };
 
@@ -53,6 +55,7 @@ struct __attribute__((packed)) SensorDataPacket {
     float qw, qx, qy, qz;
     float ax, ay, az;
     float gx, gy, gz;
+    uint8_t sustainPressed;
 };
 
 struct __attribute__((packed)) HapticFeedbackPacket {
@@ -81,6 +84,21 @@ struct __attribute__((packed)) ModeSwitchStatePacket {
     uint8_t type; // MODE_SWITCH_STATE
     uint8_t mac[6];
     uint8_t mode; // 0 = Hit, 1 = Both, 2 = Map
+    uint32_t sequence;
+};
+
+struct __attribute__((packed)) RezeroCommandPacket {
+    uint8_t type; // REZERO_COMMAND
+    uint8_t mac[6];
+    uint32_t sequence;
+};
+
+struct __attribute__((packed)) ReliablePacketAck {
+    uint8_t type; // RELIABLE_PACKET_ACK
+    uint8_t acknowledgedType;
+    uint8_t status; // 0 = accepted, non-zero = rejected
+    uint8_t mac[6];
+    uint32_t sequence;
 };
 
 uint8_t macAddress[6];
@@ -90,16 +108,108 @@ WiFiUDP udp;
 bool discovered = false;
 int unsuccessfulPacketSends = 0;
 unsigned long lastDiscoveryTime = millis();
+constexpr unsigned long RELIABLE_RETRY_INTERVAL_MS = 150;
+constexpr uint8_t MAX_RELIABLE_SEND_ATTEMPTS = 20;
+constexpr uint8_t RELIABLE_PACKET_MAX_SIZE = sizeof(ModeSwitchStatePacket);
 
-template <typename Packet>
-void sendUdpPacket(const Packet &packet, IPAddress targetIp) {
+struct ReliablePacketState {
+    bool pending;
+    uint8_t packetType;
+    uint8_t size;
+    uint32_t sequence;
+    uint8_t sendAttempts;
+    unsigned long lastSendTime;
+    uint8_t data[RELIABLE_PACKET_MAX_SIZE];
+};
+
+ReliablePacketState reliablePackets[2] = {};
+uint32_t nextModeSequence = 1;
+uint32_t nextRezeroSequence = 1;
+
+void sendUdpPacketBytes(const uint8_t *data, uint8_t size, IPAddress targetIp) {
     udp.beginPacket(targetIp, UDP_REMOTE_PORT);
-    udp.write(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet));
+    udp.write(data, size);
     if (udp.endPacket()) {
         unsuccessfulPacketSends = 0;
     } else if (++unsuccessfulPacketSends > MAX_UNSUCCESSFUL_SENDS) {
         Serial.println("Too many unsuccessful packet sends, resetting...");
         rp2040.reboot();
+    }
+}
+
+template <typename Packet>
+void sendUdpPacket(const Packet &packet, IPAddress targetIp) {
+    sendUdpPacketBytes(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet), targetIp);
+}
+
+void sendReliablePacket(ReliablePacketState &state) {
+    sendUdpPacketBytes(state.data, state.size, serverIp);
+    state.sendAttempts++;
+    state.lastSendTime = millis();
+}
+
+void queueReliablePacket(uint8_t packetType, const void *packet, uint8_t size, uint32_t sequence) {
+    ReliablePacketState *state = nullptr;
+    for (ReliablePacketState &candidate : reliablePackets) {
+        if (candidate.packetType == packetType || !candidate.pending) {
+            state = &candidate;
+            if (candidate.packetType == packetType) {
+                break;
+            }
+        }
+    }
+
+    if (state == nullptr || size > RELIABLE_PACKET_MAX_SIZE) {
+        Serial.println("Unable to queue reliable packet");
+        return;
+    }
+
+    state->pending = true;
+    state->packetType = packetType;
+    state->size = size;
+    state->sequence = sequence;
+    state->sendAttempts = 0;
+    memcpy(state->data, packet, size);
+    if (discovered) {
+        sendReliablePacket(*state);
+    }
+}
+
+void handleReliablePacketAck() {
+    ReliablePacketAck ack;
+    udp.read(reinterpret_cast<uint8_t *>(&ack), sizeof(ack));
+    if (memcmp(ack.mac, macAddress, 6) != 0) {
+        return;
+    }
+
+    for (ReliablePacketState &state : reliablePackets) {
+        if (state.pending && state.packetType == ack.acknowledgedType && state.sequence == ack.sequence) {
+            if (ack.status != 0) {
+                Serial.print("Reliable packet rejected, type: ");
+                Serial.println(ack.acknowledgedType);
+            }
+            state.pending = false;
+            return;
+        }
+    }
+}
+
+void retryReliablePackets() {
+    if (!discovered) {
+        return;
+    }
+
+    for (ReliablePacketState &state : reliablePackets) {
+        if (!state.pending || millis() - state.lastSendTime < RELIABLE_RETRY_INTERVAL_MS) {
+            continue;
+        }
+        if (state.sendAttempts >= MAX_RELIABLE_SEND_ATTEMPTS) {
+            Serial.print("Reliable packet was not acknowledged, type: ");
+            Serial.println(state.packetType);
+            state.pending = false;
+            continue;
+        }
+        sendReliablePacket(state);
     }
 }
 
@@ -194,16 +304,19 @@ bool processNetworking() {
             handleHapticFeedback();
         } else if (type == IDENTIFY_REQUEST && packetSize == sizeof(IdentifyRequestPacket)) {
             handleIdentifyRequest();
+        } else if (type == RELIABLE_PACKET_ACK && packetSize == sizeof(ReliablePacketAck)) {
+            handleReliablePacketAck();
         } else {
             // Unknown packet type or size, ignore
             uint8_t buffer[packetSize];
             udp.readBytes(buffer, packetSize);
         }
     }
+    retryReliablePackets();
     return true;
 }
 
-void sendSensorData(const IMUReading &reading) {
+void sendSensorData(const SensorReading &reading) {
     SensorDataPacket packet = {
         .type = SENSOR_DATA,
         .ts = reading.timestamp,
@@ -216,7 +329,9 @@ void sendSensorData(const IMUReading &reading) {
         .az = reading.az,
         .gx = reading.gx,
         .gy = reading.gy,
-        .gz = reading.gz};
+        .gz = reading.gz,
+        .sustainPressed = reading.sustainPressed
+    };
     memcpy(packet.mac, macAddress, 6);
     if (discovered) {
         sendUdpPacket(packet, serverIp);
@@ -233,13 +348,19 @@ void sendBatteryMeasurement(uint8_t percentage) {
     }
 }
 
-// TODO what if this packet gets lost?
 void sendModeSwitchState(uint8_t mode) {
     ModeSwitchStatePacket packet = {
         .type = MODE_SWITCH_STATE,
-        .mode = mode};
+        .mode = mode,
+        .sequence = nextModeSequence++};
     memcpy(packet.mac, macAddress, 6);
-    if (discovered) {
-        sendUdpPacket(packet, serverIp);
-    }
+    queueReliablePacket(MODE_SWITCH_STATE, &packet, sizeof(packet), packet.sequence);
+}
+
+void sendRezeroCommand() {
+    RezeroCommandPacket packet = {
+        .type = REZERO_COMMAND,
+        .sequence = nextRezeroSequence++};
+    memcpy(packet.mac, macAddress, 6);
+    queueReliablePacket(REZERO_COMMAND, &packet, sizeof(packet), packet.sequence);
 }

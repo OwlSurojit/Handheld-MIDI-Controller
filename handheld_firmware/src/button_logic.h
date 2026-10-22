@@ -2,3 +2,4 @@
 
 void setupButtons();
 void handleButtons();
+bool sustainButtonPressed();

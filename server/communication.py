@@ -20,14 +20,16 @@ HAPTIC_FEEDBACK = 0x04
 IDENTIFY_REQUEST = 0x05
 BATTERY_MEASUREMENT = 0x06
 MODE_SWITCH_STATE = 0x07
+REZERO_COMMAND = 0x08
+RELIABLE_PACKET_ACK = 0xFE
 LATENCY_CHECK = 0xFF
 
 # Discovery request: type + 6 bytes MAC
 _DISCOVERY_REQUEST_FORMAT = '<B6s'
 _DISCOVERY_REQUEST_SIZE = struct.calcsize(_DISCOVERY_REQUEST_FORMAT)
 
-# Sensor data: type + 6 bytes MAC + timestamp + 12 floats
-_SENSOR_DATA_FORMAT = '<B6sIffffffffff'
+# Sensor data: type + 6 bytes MAC + timestamp + 10 floats (qw, qx, qy, qz, ax, ay, az, gx, gy, gz) + 1 byte sustain button state
+_SENSOR_DATA_FORMAT = '<B6sIffffffffffB'
 _SENSOR_DATA_SIZE = struct.calcsize(_SENSOR_DATA_FORMAT)
 
 # Haptic feedback: type + 1 byte mode + 4 bytes duration_ms
@@ -55,10 +57,16 @@ _SOCKET_TIMEOUT_SEC = 0.002
 _BATTERY_MEASUREMENT_FORMAT = '<B6sB'
 _BATTERY_MEASUREMENT_SIZE = struct.calcsize(_BATTERY_MEASUREMENT_FORMAT)
 
-# Mode Switch state: type + 6 bytes MAC + 1 byte mode
-_MODE_SWITCH_STATE_FORMAT = '<B6sB'
+# Mode Switch state: type + 6 bytes MAC + 1 byte mode + sequence
+_MODE_SWITCH_STATE_FORMAT = '<B6sBI'
 _MODE_SWITCH_STATE_SIZE = struct.calcsize(_MODE_SWITCH_STATE_FORMAT)
 
+# Rezero command: type + 6 bytes MAC + sequence
+_REZERO_COMMAND_FORMAT = '<B6sI'
+_REZERO_COMMAND_SIZE = struct.calcsize(_REZERO_COMMAND_FORMAT)
+
+# Reliable packet ACK: type + acknowledged type + status + 6 bytes MAC + sequence
+_RELIABLE_PACKET_ACK_FORMAT = '<BBB6sI'
 
 @dataclass(frozen=True)
 class _HapticCommand:
@@ -91,6 +99,7 @@ class CommunicationThread(threading.Thread):
         self.pending_latency: dict[bytes, tuple[int, int]] = {}
         self._haptic_commands: Queue[_HapticCommand] = Queue(maxsize=256)
         self._identify_requests: Queue[bytes] = Queue(maxsize=16)
+        self._last_reliable_sequences: dict[tuple[bytes, int], int] = {}
         self.provisioning_service = provisioning_service
 
     def _create_socket(self) -> socket.socket:
@@ -159,6 +168,8 @@ class CommunicationThread(threading.Thread):
 
     def _handle_discovery_request(self, raw: bytes, addr: tuple[str, int], sock: socket.socket) -> None:
         _, mac = struct.unpack(_DISCOVERY_REQUEST_FORMAT, raw)
+        for key in [key for key in self._last_reliable_sequences if key[0] == mac]:
+            del self._last_reliable_sequences[key]
         print(f"Discovery request from {addr[0]} (MAC: {mac.hex()})")
         response = bytes([DISCOVERY_RESPONSE])
         sock.sendto(response, addr)
@@ -178,12 +189,12 @@ class CommunicationThread(threading.Thread):
         self.pending_latency.pop(mac, None)
 
     def _handle_sensor_data(self, raw: bytes, addr: tuple[str, int]) -> None:
-        _, mac, ts, qw, qx, qy, qz, ax, ay, az, gx, gy, gz = struct.unpack(_SENSOR_DATA_FORMAT, raw)
+        _, mac, ts, qw, qx, qy, qz, ax, ay, az, gx, gy, gz, sustainPressed = struct.unpack(_SENSOR_DATA_FORMAT, raw)
         self.num_packets_per_controller[mac] = self.num_packets_per_controller.get(mac, 0) + 1
 
         state = get_controller(mac, addr[0])
         state.last_packet_time = time.monotonic()
-        state.add_raw_data(ts, (qw, qx, qy, qz), (ax, ay, az), (gx, gy, gz))
+        state.add_raw_data(ts, (qw, qx, qy, qz), (ax, ay, az), (gx, gy, gz), bool(sustainPressed))
 
         if state.source_ip != addr[0]:
             state.source_ip = addr[0]
@@ -197,19 +208,64 @@ class CommunicationThread(threading.Thread):
         if state.source_ip != addr[0]:
             state.source_ip = addr[0]
             
-    def _handle_mode_switch_state(self, raw: bytes, addr: tuple[str, int]) -> None:
-        _, mac, mode = struct.unpack(_MODE_SWITCH_STATE_FORMAT, raw)
+    def _send_reliable_ack(
+        self,
+        sock: socket.socket,
+        addr: tuple[str, int],
+        acknowledged_type: int,
+        mac: bytes,
+        sequence: int,
+        status: int = 0,
+    ) -> None:
+        ack = struct.pack(
+            _RELIABLE_PACKET_ACK_FORMAT,
+            RELIABLE_PACKET_ACK,
+            acknowledged_type,
+            status,
+            mac,
+            sequence,
+        )
+        sock.sendto(ack, addr)
+
+    def _is_new_reliable_packet(self, mac: bytes, packet_type: int, sequence: int) -> bool:
+        key = (mac, packet_type)
+        previous = self._last_reliable_sequences.get(key)
+        if previous is None:
+            return True
+        return 0 < ((sequence - previous) & 0xFFFFFFFF) < 0x80000000
+
+    def _remember_reliable_packet(self, mac: bytes, packet_type: int, sequence: int) -> None:
+        self._last_reliable_sequences[(mac, packet_type)] = sequence
+
+    def _handle_mode_switch_state(self, raw: bytes, addr: tuple[str, int], sock: socket.socket) -> None:
+        _, mac, mode, sequence = struct.unpack(_MODE_SWITCH_STATE_FORMAT, raw)
         state = get_controller(mac, addr[0])
         state.last_packet_time = time.monotonic()
         # MODE switch state: 0 = Hit, 1 = Both, 2 = Map
         if mode not in (0, 1, 2):
             print(f"Ignoring invalid mode {mode} from controller {mac.hex()}")
-        else:
+            self._send_reliable_ack(sock, addr, MODE_SWITCH_STATE, mac, sequence, status=1)
+            return
+        if self._is_new_reliable_packet(mac, MODE_SWITCH_STATE, sequence):
             mac_key = mac.hex().lower()
             update_many([
                 (["controllers", mac_key, "hit", "enabled"], mode in (0, 1)),
                 (["controllers", mac_key, "mappings_enabled"], mode in (1, 2)),
             ])
+            self._remember_reliable_packet(mac, MODE_SWITCH_STATE, sequence)
+        self._send_reliable_ack(sock, addr, MODE_SWITCH_STATE, mac, sequence)
+
+        if state.source_ip != addr[0]:
+            state.source_ip = addr[0]
+
+    def _handle_rezero_command(self, raw: bytes, addr: tuple[str, int], sock: socket.socket) -> None:
+        _, mac, sequence = struct.unpack(_REZERO_COMMAND_FORMAT, raw)
+        state = get_controller(mac, addr[0])
+        state.last_packet_time = time.monotonic()
+        if self._is_new_reliable_packet(mac, REZERO_COMMAND, sequence):
+            state.re_zero()
+            self._remember_reliable_packet(mac, REZERO_COMMAND, sequence)
+        self._send_reliable_ack(sock, addr, REZERO_COMMAND, mac, sequence)
 
         if state.source_ip != addr[0]:
             state.source_ip = addr[0]
@@ -256,7 +312,9 @@ class CommunicationThread(threading.Thread):
         elif packet_type == BATTERY_MEASUREMENT and len(raw) == _BATTERY_MEASUREMENT_SIZE:
             self._handle_battery_measurement(raw, addr)
         elif packet_type == MODE_SWITCH_STATE and len(raw) == _MODE_SWITCH_STATE_SIZE:
-            self._handle_mode_switch_state(raw, addr)
+            self._handle_mode_switch_state(raw, addr, sock)
+        elif packet_type == REZERO_COMMAND and len(raw) == _REZERO_COMMAND_SIZE:
+            self._handle_rezero_command(raw, addr, sock)
 
     def run(self) -> None:
         print(f"Listening for controller data on UDP port {self.udp_port}...")

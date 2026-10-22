@@ -58,5 +58,5 @@ void loop() {
 
     handleHapticCommandEnd();
     handleBatteryMeasurement();
-    processIMU();
+    processSensors();
 }

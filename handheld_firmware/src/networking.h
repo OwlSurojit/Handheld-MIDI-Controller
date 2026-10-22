@@ -9,6 +9,7 @@
 
 void initializeNetworking();
 bool processNetworking();
-void sendSensorData(const IMUReading &reading);
+void sendSensorData(const SensorReading &reading);
 void sendBatteryMeasurement(uint8_t percentage);
 void sendModeSwitchState(uint8_t mode);
+void sendRezeroCommand();

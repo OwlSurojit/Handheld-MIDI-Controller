@@ -4,6 +4,7 @@
 #include "vibration_motor_utils.h"
 #include "imu_calibration.h"
 #include "wifi_credentials_store.h"
+#include "imu_logic.h"
 #include <Arduino.h>
 
 enum ModeSwitchState {
@@ -43,7 +44,8 @@ void handleResetRezero() {
         } else if (millis() - resetButtonHeldSince >= HOLD_REBOOT_MS) {
             rp2040.reboot();
         } else {
-            // send rezero command
+            sendRezeroCommand();
+            Serial.println("Rezero command sent successfully");
             resetButtonHeldSince = 0;
         }
     }
@@ -79,4 +81,8 @@ void handleModeSwitch() {
 void handleButtons() {
     handleResetRezero();
     handleModeSwitch();
+}
+
+bool sustainButtonPressed() {
+    return digitalRead(SUS_BUTTON_PIN) == LOW;
 }

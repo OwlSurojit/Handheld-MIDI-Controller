@@ -22,7 +22,8 @@ class ControllerState:
         self.last_packet_time = 0.0
         self.raw_data_queue = deque(maxlen=1)
         self._lock = threading.Lock()
-        
+        self.sustain_pressed = False
+
         self.battery_percentage = 100  # Battery percentage (0-100), updated from controller packets
 
         # One-Euro filters for all 10 incoming signals
@@ -83,10 +84,10 @@ class ControllerState:
         self.gyro_mag_history = deque(maxlen=ControllerState.HISTORY_LEN)
         self.swing_ud_accel_history = deque(maxlen=ControllerState.HISTORY_LEN)
 
-    def add_raw_data(self, ts, quat, accel, gyro):
+    def add_raw_data(self, ts, quat, accel, gyro, sustain_pressed: bool):
         """Add raw data to the queue for processing."""
         with self._lock:
-            self.raw_data_queue.append((ts, quat, accel, gyro))
+            self.raw_data_queue.append((ts, quat, accel, gyro, sustain_pressed))
 
     def process_raw_data(self):
         """
@@ -96,7 +97,7 @@ class ControllerState:
         with self._lock:
             # 1. Pop data from the queue
             try:
-                ts, raw_quat, raw_accel, raw_gyro = self.raw_data_queue.popleft()
+                ts, raw_quat, raw_accel, raw_gyro, sustain_pressed = self.raw_data_queue.popleft()
             except IndexError:
                 return # No new data
 
@@ -138,6 +139,12 @@ class ControllerState:
             self.accel_mag_history.append(self.accel_mag)
             self.gyro_mag_history.append(self.gyro_mag)
             self.swing_ud_accel_history.append(self.swing_ud_accel)
+            
+            if self.sustain_pressed and not sustain_pressed:
+                print(f"Controller {self.mac.hex()} sustain button released.")
+            elif not self.sustain_pressed and sustain_pressed:
+                print(f"Controller {self.mac.hex()} sustain button pressed.")
+            self.sustain_pressed = sustain_pressed
 
     def get_angle_axis(self):
         """Returns the current angle-axis representation."""
