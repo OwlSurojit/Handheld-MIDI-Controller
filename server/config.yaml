@@ -15,20 +15,20 @@ defaults:
     midi_range:
     - 0
     - 127
-    invert: true
+    invert: false
     curve: linear
     curve_amount: 1.0
   - name: filter_cutoff
-    source: twist
+    source: twist_angle
     type: cc
     cc_number: 74
     range:
-    - -1
-    - 1
+    - -180
+    - 180
     midi_range:
     - 0
     - 127
-    invert: true
+    invert: false
     curve: linear
     curve_amount: 1.0
   hit:
@@ -38,7 +38,7 @@ defaults:
     note_range:
     - -1
     - 1
-    note_invert: true
+    note_invert: false
     note_curve: linear
     note_curve_amount: 1.0
     scale:
@@ -48,7 +48,6 @@ defaults:
     haptic:
       enabled: true
       command: 1
-      duration_ms: 50
     parameters:
       gyro_onset_threshold: 300
       max_velocity_gyro: 2000

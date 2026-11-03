@@ -39,8 +39,18 @@ class VisualiserWindow(QWidget):
         # Add grid and dummy 3D axis/box
         grid = gl.GLGridItem(antialias=False)
         self.view_3d.addItem(grid)
+        self.axis_item = gl.GLAxisItem()
+        self.axis_item.setSize(2, 2, 2)
+        self.view_3d.addItem(self.axis_item)
         self.box_mesh = gl.GLBoxItem(size=pg.Vector(VisualiserWindow.BOX_DIMENSIONS), color=(0, 255, 0, 100), glOptions='translucent')
         self.view_3d.addItem(self.box_mesh)
+        self.axis_labels = (
+            gl.GLTextItem(pos=(2.1, 0, 0), text="x", color=(0, 0, 255, 255), font=QFont("Arial", 10)),
+            gl.GLTextItem(pos=(0, 2.1, 0), text="y", color=(255, 255, 0, 255), font=QFont("Arial", 10)),
+            gl.GLTextItem(pos=(0, 0, 2.1), text="z", color=(0, 255, 0, 255), font=QFont("Arial", 10)),
+        )
+        for axis_label in self.axis_labels:
+            self.view_3d.addItem(axis_label)
         # self.accel_vector = gl.GLLinePlotItem(pos=np.array([[0,0,0], [0,0,1]]), color=(1, 0, 0, 255), width=3)
         # self.view_3d.addItem(self.accel_vector)
         # self.gyro_vector = gl.GLLinePlotItem(pos=np.array([[0,0,0], [0,1,0]]), color=(0, 0, 1, 255), width=3)
@@ -157,7 +167,7 @@ class VisualiserWindow(QWidget):
 
         if self._frame_count % self.TEXT_UPDATE_EVERY_N_FRAMES == 0:
             self.info_text.setText(
-                f'Swing: {snapshot["q_swing"]} | Twist: {snapshot["q_twist"]} | Twist Angle: {np.degrees(snapshot["twist_angle"]):.1f}°\n'
+                f'Swing: {snapshot["q_swing"]} | Twist: {snapshot["q_twist"]} | Twist Angle: {snapshot["twist_angle"]:.1f}°\n'
                 f'Orig. Quat: {snapshot["quat"]}\n'
                 f'Delta Quat: {snapshot["q_delta"]} | Angle: {np.degrees(angle):.1f}° Axis: ({axis[0]:.2f}, {axis[1]:.2f}, {axis[2]:.2f})'
             )

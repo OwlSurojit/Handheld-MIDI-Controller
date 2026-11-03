@@ -165,7 +165,6 @@ def _normalize_hit_config(hit_cfg: Dict[str, Any]) -> Dict[str, Any]:
         "haptic": {
             "enabled": bool(haptic.get("enabled", True)),
             "command": int(haptic.get("command", 1)) & 0xFF,
-            "duration_ms": max(0, int(haptic.get("duration_ms", 35))),
         },
         "parameters": _normalize_hit_parameters(hit_cfg.get("parameters", {})),
     }

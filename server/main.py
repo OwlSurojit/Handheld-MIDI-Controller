@@ -48,7 +48,7 @@ def main():
     recv_thread.start()
 
     # Initialize the MIDI mapper & start the main processing loop in a separate thread
-    mapper = MidiMapper(midi_out, stop_event, haptic_sender=recv_thread)
+    mapper = MidiMapper(midi_out, stop_event, hit_feedback_sender=recv_thread)
     mapper.start()
 
     # Launch UI if requested

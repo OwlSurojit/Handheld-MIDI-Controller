@@ -3,6 +3,8 @@
 #include "wifi_credentials_store.h"
 #include "vibration_motor_utils.h"
 #include "battery_measurement.h"
+#include "led_ring_utils.h"
+#include "button_logic.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -28,7 +30,7 @@ enum PacketType : uint8_t {
     DISCOVERY_REQUEST = 0x01,       // Controller sends to broadcast
     DISCOVERY_RESPONSE = 0x02,      // Server responds with its IP
     SENSOR_DATA = 0x03,             // Normal sensor data
-    HAPTIC_FEEDBACK = 0x04,         // Haptic feedback command
+    HIT_FEEDBACK = 0x04,            // Hit feedback command
     IDENTIFY_REQUEST = 0x05,        // Host triggers a short identify vibration
     BATTERY_MEASUREMENT = 0x06,     // Battery level measurement
     MODE_SWITCH_STATE = 0x07,       // Mode switch state change
@@ -58,10 +60,10 @@ struct __attribute__((packed)) SensorDataPacket {
     uint8_t sustainPressed;
 };
 
-struct __attribute__((packed)) HapticFeedbackPacket {
-    uint8_t type; // HAPTIC_FEEDBACK
+struct __attribute__((packed)) HitFeedbackPacket {
+    uint8_t type; // HIT_FEEDBACK
     uint8_t command;
-    uint32_t duration_ms;
+    uint32_t velocity;
 };
 
 struct __attribute__((packed)) IdentifyRequestPacket {
@@ -105,9 +107,20 @@ uint8_t macAddress[6];
 IPAddress broadcastIp(255, 255, 255, 255);
 IPAddress serverIp(0, 0, 0, 0);
 WiFiUDP udp;
-bool discovered = false;
 int unsuccessfulPacketSends = 0;
 unsigned long lastDiscoveryTime = millis();
+enum class NetworkState {
+    CheckingBootButton,
+    Connecting,
+    Provisioning,
+    Discovering,
+    Ready
+};
+NetworkState networkState = NetworkState::CheckingBootButton;
+unsigned long bootButtonCheckStartedAt = 0;
+unsigned long connectionStartedAt = 0;
+int credentialIndex = 0;
+wifiCredentialEntry currentCredential;
 constexpr unsigned long RELIABLE_RETRY_INTERVAL_MS = 150;
 constexpr uint8_t MAX_RELIABLE_SEND_ATTEMPTS = 20;
 constexpr uint8_t RELIABLE_PACKET_MAX_SIZE = sizeof(ModeSwitchStatePacket);
@@ -170,7 +183,9 @@ void queueReliablePacket(uint8_t packetType, const void *packet, uint8_t size, u
     state->sequence = sequence;
     state->sendAttempts = 0;
     memcpy(state->data, packet, size);
-    if (discovered) {
+    Serial.print("Queued reliable packet, type: ");
+    Serial.println(packetType);
+    if (networkState == NetworkState::Ready) {
         sendReliablePacket(*state);
     }
 }
@@ -195,10 +210,6 @@ void handleReliablePacketAck() {
 }
 
 void retryReliablePackets() {
-    if (!discovered) {
-        return;
-    }
-
     for (ReliablePacketState &state : reliablePackets) {
         if (!state.pending || millis() - state.lastSendTime < RELIABLE_RETRY_INTERVAL_MS) {
             continue;
@@ -226,10 +237,13 @@ void handleDiscoveryResponse() {
     udp.read(reinterpret_cast<uint8_t *>(&response), sizeof(response));
     if (response.type == DISCOVERY_RESPONSE) {
         serverIp = udp.remoteIP();
-        discovered = true;
+        networkState = NetworkState::Ready;
         Serial.print("Server discovered at: ");
         Serial.println(serverIp);
     }
+
+    flashLedRing(0, 255, 0, 5000);
+    pulseVibration(100, 100, 2);
 
     sendInitialPackets();
 }
@@ -242,12 +256,13 @@ void handleLatencyPing() {
     }
 }
 
-void handleHapticFeedback() {
-    Serial.println("Received haptic feedback command");
-    HapticFeedbackPacket packet;
+void handleHitFeedback() {
+    Serial.println("Received hit feedback command");
+    HitFeedbackPacket packet;
     udp.read(reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
     if (packet.command == 0x01) {
-        handleHapticCommand(packet.duration_ms);
+        vibrateFor(packet.velocity);
+        flashLedRing(0, packet.velocity*2, 0, packet.velocity*5);
     }
 }
 
@@ -258,62 +273,117 @@ void handleIdentifyRequest() {
         pulseVibration(90, 60, 2);
     }
 }
+
+void startNextCredentialOrProvisioning() {
+    if (credentialIndex >= wifiCredentialsCount()) {
+        if (beginProvisioningAPMode(udp, macAddress, PROVISIONING_SETTINGS, false)) {
+            networkState = NetworkState::Provisioning;
+        }
+        return;
+    }
+
+    if (!wifiCredentialsGetByIndex(credentialIndex++, &currentCredential)) {
+        startNextCredentialOrProvisioning();
+        return;
+    }
+
+    blinkLedRing(255, 255, 0, 300, 300);
+
+    Serial.print("Trying SSID: ");
+    Serial.println(currentCredential.ssid);
+    WiFi.disconnect();
+    if ((currentCredential.authType == PROVISIONING_SETTINGS.wifiAuthOpen) ||
+        (currentCredential.password[0] == '\0')) {
+        WiFi.begin(currentCredential.ssid);
+    } else {
+        WiFi.begin(currentCredential.ssid, currentCredential.password);
+    }
+    connectionStartedAt = millis();
+    networkState = NetworkState::Connecting;
+}
+
+void processConnection() {
+    if (WiFi.status() == WL_CONNECTED) {
+        wifiCredentialsMarkUsed(currentCredential.ssid, currentCredential.authType);
+        udp.begin(UDP_LOCAL_PORT);
+        Serial.println("WiFi connected");
+        networkState = NetworkState::Discovering;
+        blinkLedRing(0, 255, 0, 500, 500);
+        return;
+    }
+
+    if (millis() - connectionStartedAt >= PROVISIONING_SETTINGS.wifiConnectTimeoutMs) {
+        Serial.println("Connection attempt timed out");
+        startNextCredentialOrProvisioning();
+    }
+}
 } // namespace
 
 void initializeNetworking() {
     WiFi.mode(WIFI_STA);
     WiFi.macAddress(macAddress);
-
-    if (isProvisioningButtonHeldOnBoot(PROVISIONING_SETTINGS.forceApHoldMs)) {
-        Serial.println("Boot button hold detected. Wiping saved Wi-Fi credentials.");
-        wifiCredentialsClear();
-        enterProvisioningAPMode(udp, macAddress, PROVISIONING_SETTINGS, true);
-    }
-
-    while (!connectFromStoredCredentials(PROVISIONING_SETTINGS)) {
-        Serial.println("Unable to connect using saved credentials. Entering AP provisioning mode.");
-        enterProvisioningAPMode(udp, macAddress, PROVISIONING_SETTINGS, false);
-    }
-
-    WiFi.macAddress(macAddress);
-    udp.begin(UDP_LOCAL_PORT);
-    Serial.println("WiFi connected");
+    bootButtonCheckStartedAt = millis();
+    networkState = NetworkState::CheckingBootButton;
 }
 
 bool processNetworking() {
-    if (!discovered) {
-        handleDiscoveryResponse();
-        if (!discovered && millis() - lastDiscoveryTime >= 1000) {
-            DiscoveryRequestPacket discoveryPacket = {
-                .type = DISCOVERY_REQUEST,
-            };
-            memcpy(discoveryPacket.mac, macAddress, 6);
-            sendUdpPacket(discoveryPacket, broadcastIp);
-            Serial.println("Sent discovery request");
-            lastDiscoveryTime = millis();
-        }
-        return false;
-    }
+    switch (networkState) {
+        case NetworkState::CheckingBootButton:
+            if (digitalRead(RESET_REZERO_BUTTON_PIN) != LOW) {
+                credentialIndex = 0;
+                startNextCredentialOrProvisioning();
+            } else if (millis() - bootButtonCheckStartedAt >= PROVISIONING_SETTINGS.forceApHoldMs) {
+                Serial.println("Boot button hold detected. Wiping saved Wi-Fi credentials.");
+                wifiCredentialsClear();
+                if (beginProvisioningAPMode(udp, macAddress, PROVISIONING_SETTINGS, true)) {
+                    networkState = NetworkState::Provisioning;
+                }
+            }
+            return false;
 
-    int packetSize = udp.parsePacket();
-    if (packetSize > 0) {
-        byte type = udp.peek();
-        if (type == LATENCY_CHECK && packetSize == sizeof(LatencyPacket)) {
-            handleLatencyPing();
-        } else if (type == HAPTIC_FEEDBACK && packetSize == sizeof(HapticFeedbackPacket)) {
-            handleHapticFeedback();
-        } else if (type == IDENTIFY_REQUEST && packetSize == sizeof(IdentifyRequestPacket)) {
-            handleIdentifyRequest();
-        } else if (type == RELIABLE_PACKET_ACK && packetSize == sizeof(ReliablePacketAck)) {
-            handleReliablePacketAck();
-        } else {
-            // Unknown packet type or size, ignore
-            uint8_t buffer[packetSize];
-            udp.readBytes(buffer, packetSize);
-        }
+        case NetworkState::Connecting:
+            processConnection();
+            return false;
+
+        case NetworkState::Provisioning:
+            processProvisioningAPMode();
+            return false;
+
+        case NetworkState::Discovering:
+            handleDiscoveryResponse();
+            if (millis() - lastDiscoveryTime >= 1000) {
+                DiscoveryRequestPacket discoveryPacket = {
+                    .type = DISCOVERY_REQUEST,
+                };
+                memcpy(discoveryPacket.mac, macAddress, 6);
+                sendUdpPacket(discoveryPacket, broadcastIp);
+                Serial.println("Sent discovery request");
+                lastDiscoveryTime = millis();
+            }
+            return false;
+
+        case NetworkState::Ready:
+            int packetSize = udp.parsePacket();
+            if (packetSize > 0) {
+                byte type = udp.peek();
+                if (type == LATENCY_CHECK && packetSize == sizeof(LatencyPacket)) {
+                    handleLatencyPing();
+                } else if (type == HIT_FEEDBACK && packetSize == sizeof(HitFeedbackPacket)) {
+                    handleHitFeedback();
+                } else if (type == IDENTIFY_REQUEST && packetSize == sizeof(IdentifyRequestPacket)) {
+                    handleIdentifyRequest();
+                } else if (type == RELIABLE_PACKET_ACK && packetSize == sizeof(ReliablePacketAck)) {
+                    handleReliablePacketAck();
+                } else {
+                    // Unknown packet type or size, ignore
+                    uint8_t buffer[packetSize];
+                    udp.readBytes(buffer, packetSize);
+                }
+            }
+            retryReliablePackets();
+            return true;
     }
-    retryReliablePackets();
-    return true;
+    return false;
 }
 
 void sendSensorData(const SensorReading &reading) {
@@ -333,7 +403,7 @@ void sendSensorData(const SensorReading &reading) {
         .sustainPressed = reading.sustainPressed
     };
     memcpy(packet.mac, macAddress, 6);
-    if (discovered) {
+    if (networkState == NetworkState::Ready) {
         sendUdpPacket(packet, serverIp);
     }
 }
@@ -343,7 +413,7 @@ void sendBatteryMeasurement(uint8_t percentage) {
         .type = BATTERY_MEASUREMENT,
         .percentage = percentage};
     memcpy(packet.mac, macAddress, 6);
-    if (discovered) {
+    if (networkState == NetworkState::Ready) {
         sendUdpPacket(packet, serverIp);
     }
 }

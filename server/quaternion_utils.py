@@ -151,7 +151,7 @@ class Quat:
     def to_swing_twist(self, twist_axis: np.ndarray) -> Tuple['Quat', 'Quat']:
         """
         Decompose this quaternion into swing and twist components.
-        Returns (swing, twist) where twist is rotation around the z-axis.
+        Returns (swing, twist) where twist is rotation around the twist axis.
         """
         p = np.array([self._x, self._y, self._z])
 

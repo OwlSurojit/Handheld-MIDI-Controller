@@ -12,16 +12,17 @@ from server.scales import get_absolute_scale
 import server.quaternion_utils as q_utils
 
 
-class HapticSender(Protocol):
-    def send_haptic_feedback(self, controller_mac: bytes, command: int = 0x01, duration_ms: int = 35) -> bool:
+
+class HitFeedbackSender(Protocol):
+    def send_hit_feedback(self, controller_mac: bytes, command: int = 0x01, velocity: int = 35) -> bool:
         ...
 
 class MidiMapper(threading.Thread):
-    def __init__(self, midi_out: MIDIOutput, stop_event: threading.Event, haptic_sender: HapticSender | None = None):
+    def __init__(self, midi_out: MIDIOutput, stop_event: threading.Event, hit_feedback_sender: HitFeedbackSender | None = None):
         super().__init__()
         self.midi_out = midi_out
         self.stop_event = stop_event
-        self.haptic_sender = haptic_sender
+        self.hit_feedback_sender = hit_feedback_sender
         self.last_cc_values = {} # (controller_id, cc_number) -> value
         self.midi_learn = MidiLearnEngine()
 
@@ -62,13 +63,17 @@ class MidiMapper(threading.Thread):
         self._send_scheduled_note_offs(state, cfg)
         if cfg.get("muted", False):
             return
+        self._handle_sustain_button(state)
         self._update_hit_detector(state, cfg)
         self._process_mappings(state, cfg)
                 
-        if state.sustain_pressed:
-            self.midi_out.send_cc(state.midi_channel, 64, 127)  # Sustain pedal ON
-        else:
-            self.midi_out.send_cc(state.midi_channel, 64, 0)    # Sustain pedal OFF
+
+    def _handle_sustain_button(self, state: ControllerState):
+        if state.sustain_changed:
+            if state.sustain_pressed:
+                self.midi_out.send_cc(state.midi_channel, 64, 127)  # Sustain pedal ON
+            else:
+                self.midi_out.send_cc(state.midi_channel, 64, 0)    # Sustain pedal OFF
 
     def _update_hit_detector(self, state: ControllerState, cfg):
         hit_cfg = cfg['hit']
@@ -151,13 +156,13 @@ class MidiMapper(threading.Thread):
         print(f"Triggering note {state.current_note} with velocity {velocity} on channel {state.midi_channel}")
         self.midi_out.send_note_on(state.midi_channel, state.current_note, velocity)
         state.add_on_note(state.current_note)
-        self._send_haptic_feedback(state, hit_cfg, velocity)
+        self._send_hit_feedback(state, hit_cfg, velocity)
         
         state.hit_state = "refractory"
         state.last_note_time = time.monotonic()
 
-    def _send_haptic_feedback(self, state: ControllerState, hit_cfg: dict, velocity: int) -> None:
-        if self.haptic_sender is None:
+    def _send_hit_feedback(self, state: ControllerState, hit_cfg: dict, velocity: int) -> None:
+        if self.hit_feedback_sender is None:
             return
 
         haptic_cfg = hit_cfg.get('haptic', {})
@@ -174,7 +179,7 @@ class MidiMapper(threading.Thread):
         if duration_ms <= 0:
             return
 
-        self.haptic_sender.send_haptic_feedback(state.mac, command, duration_ms)
+        self.hit_feedback_sender.send_hit_feedback(state.mac, command, duration_ms)
 
     def _process_mappings(self, state: ControllerState, cfg):
         if not bool(cfg.get('mappings_enabled', True)):

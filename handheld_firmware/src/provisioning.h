@@ -17,10 +17,9 @@ struct ProvisioningSettings {
     uint8_t ackWrongTarget;
 };
 
-bool isProvisioningButtonHeldOnBoot(uint32_t holdMs);
-bool connectFromStoredCredentials(const ProvisioningSettings &settings);
-void enterProvisioningAPMode(
+bool beginProvisioningAPMode(
     WiFiUDP &udp,
     uint8_t macAddr[6],
     const ProvisioningSettings &settings,
     bool wipedCredentials);
+void processProvisioningAPMode();

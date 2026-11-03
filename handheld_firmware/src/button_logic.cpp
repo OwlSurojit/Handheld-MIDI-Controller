@@ -2,6 +2,7 @@
 #include "consts.h"
 #include "networking.h"
 #include "vibration_motor_utils.h"
+#include "led_ring_utils.h"
 #include "imu_calibration.h"
 #include "wifi_credentials_store.h"
 #include "imu_logic.h"
@@ -25,15 +26,23 @@ void setupButtons() {
 
 
 unsigned long resetButtonHeldSince = 0;
+bool resetVibrationStarted = false;
+bool rebootVibrationStarted = false;
 
 void handleResetRezero() {
     if (digitalRead(RESET_REZERO_BUTTON_PIN) == LOW) {
         if (resetButtonHeldSince == 0) {
             resetButtonHeldSince = millis();
-        } else if (millis() - resetButtonHeldSince >= HOLD_RESET_MS && millis() - resetButtonHeldSince < HOLD_RESET_MS + 1000) {
+        } else if (millis() - resetButtonHeldSince >= HOLD_RESET_MS &&
+                   millis() - resetButtonHeldSince < HOLD_RESET_MS + 1000 &&
+                   !resetVibrationStarted) {
             pulseVibration(1000, 0, 1);
-        } else if (millis() - resetButtonHeldSince >= HOLD_REBOOT_MS && millis() - resetButtonHeldSince < HOLD_REBOOT_MS + 250) {
+            resetVibrationStarted = true;
+        } else if (millis() - resetButtonHeldSince >= HOLD_REBOOT_MS &&
+                   millis() - resetButtonHeldSince < HOLD_REBOOT_MS + 250 &&
+                   !rebootVibrationStarted) {
             pulseVibration(250, 0, 1);
+            rebootVibrationStarted = true;
         }
     } else if (resetButtonHeldSince != 0) {
         if (millis() - resetButtonHeldSince >= HOLD_RESET_MS) {
@@ -45,9 +54,13 @@ void handleResetRezero() {
             rp2040.reboot();
         } else {
             sendRezeroCommand();
+            pulseVibration(150,0,1);
+            flashLedRing(255, 0, 255, 1000);
             Serial.println("Rezero command sent successfully");
             resetButtonHeldSince = 0;
         }
+        resetVibrationStarted = false;
+        rebootVibrationStarted = false;
     }
 }
 

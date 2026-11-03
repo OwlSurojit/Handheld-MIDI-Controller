@@ -18,7 +18,7 @@
 #include "battery_measurement.h"
 #include "vibration_motor_utils.h"
 #include "button_logic.h"
-#include <Adafruit_NeoPixel.h>
+#include "led_ring_utils.h"
 
 
 void eeprom_init() {
@@ -30,33 +30,27 @@ void setup() {
     delay(100);
 
     eeprom_init();
+    setupLedRing();
 
     setupButtons();
     pinMode(HAPTIC_MOTOR_PIN, OUTPUT);
     digitalWrite(HAPTIC_MOTOR_PIN, LOW);
     setupBatteryMeasurement();
 
-    Adafruit_NeoPixel ledRing(NUMLEDS, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
-    ledRing.begin();
-    ledRing.clear();
-    ledRing.fill(ledRing.Color(0, 255, 0), 0, NUMLEDS);
-    ledRing.show();
-
     initializeNetworking();
 
-    pulseVibration(80, 60, 1);
+    pulseVibration(80, 600, 200);
 
     initializeIMU();
 }
 
 void loop() {
     handleButtons();
+    updateLedRing();
+    updateVibration();
+    
+    if (!processNetworking()) return;
 
-    if (!processNetworking()) {
-        return;
-    }
-
-    handleHapticCommandEnd();
     handleBatteryMeasurement();
     processSensors();
 }

@@ -97,7 +97,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "haptic": {
                 "enabled": True,
                 "command": 1,
-                "duration_ms": 100,
             },
             "parameters": {
                 "gyro_onset_threshold": 300,

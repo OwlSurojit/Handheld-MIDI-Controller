@@ -16,7 +16,7 @@ from server.shared_state import controllers, get_controller, has_controller
 DISCOVERY_REQUEST = 0x01
 DISCOVERY_RESPONSE = 0x02
 SENSOR_DATA = 0x03
-HAPTIC_FEEDBACK = 0x04
+HIT_FEEDBACK = 0x04
 IDENTIFY_REQUEST = 0x05
 BATTERY_MEASUREMENT = 0x06
 MODE_SWITCH_STATE = 0x07
@@ -32,9 +32,9 @@ _DISCOVERY_REQUEST_SIZE = struct.calcsize(_DISCOVERY_REQUEST_FORMAT)
 _SENSOR_DATA_FORMAT = '<B6sIffffffffffB'
 _SENSOR_DATA_SIZE = struct.calcsize(_SENSOR_DATA_FORMAT)
 
-# Haptic feedback: type + 1 byte mode + 4 bytes duration_ms
-_HAPTIC_FEEDBACK_FORMAT = '<BBI'
-_HAPTIC_FEEDBACK_SIZE = struct.calcsize(_HAPTIC_FEEDBACK_FORMAT)
+# Hit feedback: type + 1 byte mode + 4 bytes velocity
+_HIT_FEEDBACK_FORMAT = '<BBI'
+_HIT_FEEDBACK_SIZE = struct.calcsize(_HIT_FEEDBACK_FORMAT)
 
 # Identify request: single type byte
 _IDENTIFY_REQUEST_FORMAT = '<B'
@@ -69,10 +69,10 @@ _REZERO_COMMAND_SIZE = struct.calcsize(_REZERO_COMMAND_FORMAT)
 _RELIABLE_PACKET_ACK_FORMAT = '<BBB6sI'
 
 @dataclass(frozen=True)
-class _HapticCommand:
+class _HitFeedbackCommand:
     controller_mac: bytes
     command: int
-    duration_ms: int
+    velocity: int
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ class CommunicationThread(threading.Thread):
         self.num_packets_per_controller: dict[bytes, int] = {}
         # Store timestamp echo token plus a high-resolution send timestamp.
         self.pending_latency: dict[bytes, tuple[int, int]] = {}
-        self._haptic_commands: Queue[_HapticCommand] = Queue(maxsize=256)
+        self._hit_feedback_commands: Queue[_HitFeedbackCommand] = Queue(maxsize=256)
         self._identify_requests: Queue[bytes] = Queue(maxsize=16)
         self._last_reliable_sequences: dict[tuple[bytes, int], int] = {}
         self.provisioning_service = provisioning_service
@@ -109,26 +109,26 @@ class CommunicationThread(threading.Thread):
         sock.settimeout(_SOCKET_TIMEOUT_SEC)
         return sock
 
-    def send_haptic_feedback(self, controller_mac: bytes, command: int = 0x01, duration_ms: int = 35) -> bool:
-        """Queue a haptic command to be sent by the communication thread."""
+    def send_hit_feedback(self, controller_mac: bytes, command: int = 0x01, velocity: int = 35) -> bool:
+        """Queue a hit feedback command to be sent by the communication thread."""
         if not isinstance(controller_mac, (bytes, bytearray)) or len(controller_mac) != 6:
             return False
 
         sanitized_command = int(command) & 0xFF
-        sanitized_duration_ms = max(0, min(int(duration_ms), 0xFFFFFFFF))
-        command_item = _HapticCommand(bytes(controller_mac), sanitized_command, sanitized_duration_ms)
+        sanitized_velocity = max(0, min(int(velocity), 0xFFFFFFFF))
+        command_item = _HitFeedbackCommand(bytes(controller_mac), sanitized_command, sanitized_velocity)
 
         try:
-            self._haptic_commands.put_nowait(command_item)
+            self._hit_feedback_commands.put_nowait(command_item)
             return True
         except Full:
-            print("Haptic command queue is full; dropping command.")
+            print("Hit feedback command queue is full; dropping command.")
             return False
 
-    def _flush_haptic_commands(self, sock: socket.socket, max_batch: int = 32) -> None:
+    def _flush_hit_feedback_commands(self, sock: socket.socket, max_batch: int = 32) -> None:
         for _ in range(max_batch):
             try:
-                cmd = self._haptic_commands.get_nowait()
+                cmd = self._hit_feedback_commands.get_nowait()
             except Empty:
                 break
 
@@ -136,9 +136,9 @@ class CommunicationThread(threading.Thread):
             if state is None or not state.source_ip:
                 continue
 
-            packet = struct.pack(_HAPTIC_FEEDBACK_FORMAT, HAPTIC_FEEDBACK, cmd.command, cmd.duration_ms)
+            packet = struct.pack(_HIT_FEEDBACK_FORMAT, HIT_FEEDBACK, cmd.command, cmd.velocity)
             sock.sendto(packet, (state.source_ip, self.udp_port))
-            print(f"Sent haptic command to {state.source_ip} for controller {cmd.controller_mac.hex()} with command {cmd.command} and duration {cmd.duration_ms}ms")
+            print(f"Sent hit feedback command to {state.source_ip} for controller {cmd.controller_mac.hex()} with command {cmd.command} and duration {cmd.velocity}ms")
 
     def send_identify(self, controller_mac: bytes) -> bool:
         """Queue an identify request packet for a specific controller."""
@@ -322,7 +322,7 @@ class CommunicationThread(threading.Thread):
         try:
             while not self.stop_event.is_set():
                 try:
-                    self._flush_haptic_commands(sock)
+                    self._flush_hit_feedback_commands(sock)
                     self._flush_identify_requests(sock)
                     if self.provisioning_service:
                         self.provisioning_service.flush_pending(sock, self.udp_port)

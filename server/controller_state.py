@@ -6,8 +6,9 @@ from server.quaternion_utils import Quat
 
 class ControllerState:
 
-    TWIST_AXIS = np.array([0,1,0])
-    SENSOR_ORIENTATION_QUAT = Quat.from_array([0.7071068, 0, 0, 0.7071068])  # 90 degrees rotation around z axis
+    TWIST_AXIS = np.array([1,0,0])
+    SENSOR_ORIENTATION_QUAT = Quat.from_array([0.0, 0.70710678, -0.70710678, 0.0])
+    # Quat.from_array([0,0.7071068,-0.7071068,0])  #Quat.from_array([0.7071068, 0, 0, 0.7071068])  # 90 degrees rotation around z axis Quat.from_array([0,0.7071068,-0.7071068,0]) 
     HISTORY_LEN = 500
 
     """Holds the state for a single connected controller."""
@@ -23,6 +24,7 @@ class ControllerState:
         self.raw_data_queue = deque(maxlen=1)
         self._lock = threading.Lock()
         self.sustain_pressed = False
+        self.sustain_changed = False
 
         self.battery_percentage = 100  # Battery percentage (0-100), updated from controller packets
 
@@ -102,21 +104,20 @@ class ControllerState:
                 return # No new data
 
             # Apply sensor orientation matrix to correct the orientation
-            self.quat = Quat.from_array(raw_quat).normalize()
-            self.accel = np.array(raw_accel)
-            self.gyro = np.array(raw_gyro)
-            self.quat = ControllerState.SENSOR_ORIENTATION_QUAT * self.quat
-            self.accel = ControllerState.SENSOR_ORIENTATION_QUAT.rotate_vector(self.accel)
-            self.gyro = ControllerState.SENSOR_ORIENTATION_QUAT.rotate_vector(self.gyro)
+            sensor_to_board = ControllerState.SENSOR_ORIENTATION_QUAT.inverse()
+            self.quat = (sensor_to_board * Quat.from_array(raw_quat)).normalize()
+            self.accel = sensor_to_board.rotate_vector(np.array(raw_accel))
+            self.gyro = sensor_to_board.rotate_vector(np.array(raw_gyro))
 
             # 2. Calculate derived values
             self.q_delta = self.q_ref.conjugate() * self.quat
             self.q_angle, self.q_axis = self.q_delta.to_angle_axis()
             self.q_swing, self.q_twist = self.q_delta.to_swing_twist(ControllerState.TWIST_AXIS)
-            self.twist = self.q_twist.y
-            self.twist_angle = 2 * np.atan2(self.q_twist.y, self.q_twist.w)
+            self.twist_angle = 2 * np.atan2(self.q_twist.x, self.q_twist.w)
+            # ensure angle is between -180 and 180
+            self.twist_angle = np.degrees((self.twist_angle + np.pi) % (2 * np.pi) - np.pi)
             self.swing_lr = self.q_swing.z
-            self.swing_ud = self.q_swing.x
+            self.swing_ud = self.q_swing.y
             self.accel_mag = np.linalg.norm(self.accel)
             self.gyro_mag = np.linalg.norm(self.gyro)
             
@@ -140,10 +141,7 @@ class ControllerState:
             self.gyro_mag_history.append(self.gyro_mag)
             self.swing_ud_accel_history.append(self.swing_ud_accel)
             
-            if self.sustain_pressed and not sustain_pressed:
-                print(f"Controller {self.mac.hex()} sustain button released.")
-            elif not self.sustain_pressed and sustain_pressed:
-                print(f"Controller {self.mac.hex()} sustain button pressed.")
+            self.sustain_changed = (self.sustain_pressed and not sustain_pressed) or (not self.sustain_pressed and sustain_pressed)
             self.sustain_pressed = sustain_pressed
 
     def get_angle_axis(self):
