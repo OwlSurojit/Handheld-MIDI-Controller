@@ -1,10 +1,10 @@
 #include "button_logic.h"
 #include "consts.h"
-#include "networking.h"
+#include "networking/communication.h"
 #include "vibration_motor_utils.h"
 #include "led_ring_utils.h"
 #include "imu_calibration.h"
-#include "wifi_credentials_store.h"
+#include "networking/wifi_credentials_store.h"
 #include "imu_logic.h"
 #include <Arduino.h>
 

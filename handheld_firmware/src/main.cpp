@@ -13,12 +13,13 @@
 #include "consts.h"
 #include "EEPROM.h"
 #include "eeprom_layout.h"
-#include "networking.h"
+#include "networking/state.h"
 #include "imu_logic.h"
 #include "battery_measurement.h"
 #include "vibration_motor_utils.h"
 #include "button_logic.h"
 #include "led_ring_utils.h"
+#include <Arduino.h>
 
 
 void eeprom_init() {

@@ -1,6 +1,6 @@
 #include "battery_measurement.h"
 #include "consts.h"
-#include "networking.h"
+#include "networking/communication.h"
 #include <Arduino.h>
 
 const float MAX_BATTERY_VOLTAGE = 4.2;

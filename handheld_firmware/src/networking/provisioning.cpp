@@ -75,8 +75,7 @@ void sendProvisioningAck(uint8_t status, IPAddress targetIp) {
 bool beginProvisioningAPMode(
     WiFiUDP &udp,
     uint8_t macAddr[6],
-    const ProvisioningSettings &settings,
-    bool wipedCredentials) {
+    const ProvisioningSettings &settings) {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_AP);
     blinkLedRing(0, 0, 255, 100, 100);
@@ -112,9 +111,6 @@ bool beginProvisioningAPMode(
     Serial.println(apSsid);
     Serial.print("AP IP: ");
     Serial.println(WiFi.softAPIP());
-    if (wipedCredentials) {
-        pulseVibration(80, 70, 3);
-    }
     return true;
 }
 

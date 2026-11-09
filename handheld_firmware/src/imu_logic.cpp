@@ -3,7 +3,7 @@
 #include "ICM_20948.h"
 #include "imu_calibration.h"
 #include "imu_dmp.h"
-#include "networking.h"
+#include "networking/communication.h"
 #include "vibration_motor_utils.h"
 #include "button_logic.h"
 #include <Arduino.h>

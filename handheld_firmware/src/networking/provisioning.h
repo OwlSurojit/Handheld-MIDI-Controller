@@ -20,6 +20,5 @@ struct ProvisioningSettings {
 bool beginProvisioningAPMode(
     WiFiUDP &udp,
     uint8_t macAddr[6],
-    const ProvisioningSettings &settings,
-    bool wipedCredentials);
+    const ProvisioningSettings &settings);
 void processProvisioningAPMode();
