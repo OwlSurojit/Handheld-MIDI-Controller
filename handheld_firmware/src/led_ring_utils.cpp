@@ -3,7 +3,11 @@
 #include <Adafruit_NeoPixel.h>
 #include <stdint.h>
 
-Adafruit_NeoPixel ledRing;
+Adafruit_NeoPixel ledRing(
+    NUMLEDS,
+    LED_RING_PIN,
+    NEO_GRB + NEO_KHZ800
+);
 
 enum LedRingState {
     ON,
@@ -31,7 +35,6 @@ struct FlashState {
 LedRingState curState = OFF;
 
 void setupLedRing() {
-    ledRing = Adafruit_NeoPixel(NUMLEDS, LED_RING_PIN, NEO_GRB + NEO_KHZ800);
     ledRing.begin();
     ledRing.clear();
     ledRing.show();

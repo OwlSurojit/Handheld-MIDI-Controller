@@ -310,9 +310,7 @@ void processConnection() {
         networkState = NetworkState::Discovering;
         blinkLedRing(0, 255, 0, 500, 500);
         return;
-    }
-
-    if (millis() - connectionStartedAt >= PROVISIONING_SETTINGS.wifiConnectTimeoutMs) {
+    } else if (WiFi.status() == WL_CONNECT_FAILED || millis() - connectionStartedAt >= PROVISIONING_SETTINGS.wifiConnectTimeoutMs) {
         Serial.println("Connection attempt timed out");
         startNextCredentialOrProvisioning();
     }

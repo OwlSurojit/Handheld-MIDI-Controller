@@ -39,9 +39,9 @@ void setup() {
 
     initializeNetworking();
 
-    pulseVibration(80, 600, 200);
-
     initializeIMU();
+
+    pulseVibration(80, 100, 2);
 }
 
 void loop() {
