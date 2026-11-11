@@ -1,9 +1,9 @@
 #include "state.h"
-#include "communication.h"
-#include "consts.h"
-#include "led_ring_utils.h"
 #include "provisioning.h"
 #include "wifi_credentials_store.h"
+#include "communication.h"
+#include "consts.h"
+#include "peripherals/led_ring_utils.h"
 #include <Arduino.h>
 #include <WiFi.h>
 

@@ -1,9 +1,9 @@
 #include "communication.h"
-#include "state.h"
-#include "battery_measurement.h"
 #include "consts.h"
-#include "led_ring_utils.h"
-#include "vibration_motor_utils.h"
+#include "state.h"
+#include "peripherals/battery_measurement.h"
+#include "peripherals/led_ring_utils.h"
+#include "peripherals/vibration_motor_utils.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <string.h>

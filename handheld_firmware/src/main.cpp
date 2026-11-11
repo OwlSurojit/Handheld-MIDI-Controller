@@ -14,11 +14,11 @@
 #include "EEPROM.h"
 #include "eeprom_layout.h"
 #include "networking/state.h"
-#include "imu_logic.h"
-#include "battery_measurement.h"
-#include "vibration_motor_utils.h"
-#include "button_logic.h"
-#include "led_ring_utils.h"
+#include "imu/imu_logic.h"
+#include "peripherals/battery_measurement.h"
+#include "peripherals/vibration_motor_utils.h"
+#include "peripherals/button_logic.h"
+#include "peripherals/led_ring_utils.h"
 #include <Arduino.h>
 
 

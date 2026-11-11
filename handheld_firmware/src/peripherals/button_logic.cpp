@@ -1,11 +1,11 @@
 #include "button_logic.h"
 #include "consts.h"
+#include "networking/wifi_credentials_store.h"
 #include "networking/communication.h"
 #include "vibration_motor_utils.h"
 #include "led_ring_utils.h"
-#include "imu_calibration.h"
-#include "networking/wifi_credentials_store.h"
-#include "imu_logic.h"
+#include "imu/imu_calibration.h"
+#include "imu/imu_logic.h"
 #include <Arduino.h>
 
 enum ModeSwitchState {

@@ -1,8 +1,8 @@
 #include "provisioning.h"
 #include "consts.h"
 #include "wifi_credentials_store.h"
-#include "vibration_motor_utils.h"
-#include "led_ring_utils.h"
+#include "peripherals/vibration_motor_utils.h"
+#include "peripherals/led_ring_utils.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <stddef.h>

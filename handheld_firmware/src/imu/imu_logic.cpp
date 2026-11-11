@@ -4,8 +4,8 @@
 #include "imu_calibration.h"
 #include "imu_dmp.h"
 #include "networking/communication.h"
-#include "vibration_motor_utils.h"
-#include "button_logic.h"
+#include "peripherals/vibration_motor_utils.h"
+#include "peripherals/button_logic.h"
 #include <Arduino.h>
 #include <math.h>
 

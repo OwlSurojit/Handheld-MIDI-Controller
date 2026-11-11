@@ -1,6 +1,6 @@
 #pragma once
 
-#include "imu_logic.h"
+#include "imu/imu_logic.h"
 #include <stdint.h>
 
 #define MAX_UNSUCCESSFUL_SENDS 100
