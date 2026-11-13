@@ -110,20 +110,22 @@ ReliablePacketState reliablePackets[2] = {};
 uint32_t nextModeSequence = 1;
 uint32_t nextRezeroSequence = 1;
 
-void sendUdpPacketBytes(const uint8_t *data, uint8_t size, IPAddress targetIp) {
+bool sendUdpPacketBytes(const uint8_t *data, uint8_t size, IPAddress targetIp) {
     udp.beginPacket(targetIp, UDP_REMOTE_PORT);
     udp.write(data, size);
     if (udp.endPacket()) {
         unsuccessfulPacketSends = 0;
+        return true;
     } else if (++unsuccessfulPacketSends > MAX_UNSUCCESSFUL_SENDS) {
         Serial.println("Too many unsuccessful packet sends, resetting...");
         rp2040.reboot();
     }
+    return false;
 }
 
 template <typename Packet>
-void sendUdpPacket(const Packet &packet, IPAddress targetIp) {
-    sendUdpPacketBytes(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet), targetIp);
+bool sendUdpPacket(const Packet &packet, IPAddress targetIp) {
+    return sendUdpPacketBytes(reinterpret_cast<const uint8_t *>(&packet), sizeof(packet), targetIp);
 }
 
 void sendReliablePacket(ReliablePacketState &state) {
@@ -270,7 +272,10 @@ void processReadyCommunication() {
     retryReliablePackets();
 }
 
-void sendSensorData(const SensorReading &reading) {
+bool sendSensorData(const SensorReading &reading) {
+    if (!communicationReady) {
+        return false;
+    }
     SensorDataPacket packet = {
         .type = SENSOR_DATA,
         .ts = reading.timestamp,
@@ -287,23 +292,25 @@ void sendSensorData(const SensorReading &reading) {
         .sustainPressed = reading.sustainPressed,
     };
     memcpy(packet.mac, macAddress, 6);
-    if (communicationReady) {
-        sendUdpPacket(packet, serverIp);
-    }
+    return sendUdpPacket(packet, serverIp);
 }
 
-void sendBatteryMeasurement(uint8_t percentage) {
+bool sendBatteryMeasurement(uint8_t percentage) {
+    if (!communicationReady) {
+        return false;
+    }
     BatteryMeasurementPacket packet = {
         .type = BATTERY_MEASUREMENT,
         .percentage = percentage,
     };
     memcpy(packet.mac, macAddress, 6);
-    if (communicationReady) {
-        sendUdpPacket(packet, serverIp);
-    }
+    return sendUdpPacket(packet, serverIp);
 }
 
-void sendModeSwitchState(uint8_t mode) {
+bool sendModeSwitchState(uint8_t mode) {
+    if (!communicationReady) {
+        return false;
+    }
     ModeSwitchStatePacket packet = {
         .type = MODE_SWITCH_STATE,
         .mode = mode,
@@ -311,13 +318,18 @@ void sendModeSwitchState(uint8_t mode) {
     };
     memcpy(packet.mac, macAddress, 6);
     queueReliablePacket(MODE_SWITCH_STATE, &packet, sizeof(packet), packet.sequence);
+    return true;
 }
 
-void sendRezeroCommand() {
+bool sendRezeroCommand() {
+    if (!communicationReady) {
+        return false;
+    }
     RezeroCommandPacket packet = {
         .type = REZERO_COMMAND,
         .sequence = nextRezeroSequence++,
     };
     memcpy(packet.mac, macAddress, 6);
     queueReliablePacket(REZERO_COMMAND, &packet, sizeof(packet), packet.sequence);
+    return true;
 }

@@ -8,7 +8,7 @@
 bool processDiscoveryCommunication();
 void processReadyCommunication();
 
-void sendSensorData(const SensorReading &reading);
-void sendBatteryMeasurement(uint8_t percentage);
-void sendModeSwitchState(uint8_t mode);
-void sendRezeroCommand();
+bool sendSensorData(const SensorReading &reading);
+bool sendBatteryMeasurement(uint8_t percentage);
+bool sendModeSwitchState(uint8_t mode);
+bool sendRezeroCommand();

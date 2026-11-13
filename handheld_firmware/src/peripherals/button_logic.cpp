@@ -1,11 +1,11 @@
 #include "button_logic.h"
 #include "consts.h"
-#include "networking/wifi_credentials_store.h"
-#include "networking/communication.h"
-#include "vibration_motor_utils.h"
-#include "led_ring_utils.h"
 #include "imu/imu_calibration.h"
 #include "imu/imu_logic.h"
+#include "led_ring_utils.h"
+#include "networking/communication.h"
+#include "networking/wifi_credentials_store.h"
+#include "vibration_motor_utils.h"
 #include <Arduino.h>
 
 enum ModeSwitchState {
@@ -24,43 +24,54 @@ void setupButtons() {
     pinMode(MAP_MODE_SWITCH_PIN, INPUT_PULLUP);
 }
 
-
-unsigned long resetButtonHeldSince = 0;
+unsigned long rezeroButtonHeldSince = 0;
+unsigned long resetButtonsHeldSince = 0;
 bool resetVibrationStarted = false;
 bool rebootVibrationStarted = false;
 
 void handleResetRezero() {
     if (digitalRead(RESET_REZERO_BUTTON_PIN) == LOW) {
-        if (resetButtonHeldSince == 0) {
-            resetButtonHeldSince = millis();
-        } else if (millis() - resetButtonHeldSince >= HOLD_RESET_MS &&
-                   millis() - resetButtonHeldSince < HOLD_RESET_MS + 1000 &&
-                   !resetVibrationStarted) {
-            pulseVibration(1000, 0, 1);
-            resetVibrationStarted = true;
-        } else if (millis() - resetButtonHeldSince >= HOLD_REBOOT_MS &&
-                   millis() - resetButtonHeldSince < HOLD_REBOOT_MS + 250 &&
-                   !rebootVibrationStarted) {
-            pulseVibration(250, 0, 1);
-            rebootVibrationStarted = true;
+        if (rezeroButtonHeldSince == 0) {
+            rezeroButtonHeldSince = millis();
         }
-    } else if (resetButtonHeldSince != 0) {
-        if (millis() - resetButtonHeldSince >= HOLD_RESET_MS) {
-            Serial.println("Factory reset triggered by long button hold");
-            wifiCredentialsClear();
-            deleteStoredBiases();
-            rp2040.reboot();
-        } else if (millis() - resetButtonHeldSince >= HOLD_REBOOT_MS) {
-            rp2040.reboot();
-        } else {
-            sendRezeroCommand();
-            pulseVibration(150,0,1);
-            flashLedRing(255, 0, 255, 1000);
-            Serial.println("Rezero command sent successfully");
-            resetButtonHeldSince = 0;
+        if (sustainButtonPressed()) {
+            if (resetButtonsHeldSince == 0) {
+                resetButtonsHeldSince = millis();
+            } else if (millis() - resetButtonsHeldSince >= HOLD_RESET_MS &&
+                       millis() - resetButtonsHeldSince < HOLD_RESET_MS + 1000 &&
+                       !resetVibrationStarted) {
+                vibrateFor(1000);
+                resetVibrationStarted = true;
+            } else if (millis() - resetButtonsHeldSince >= HOLD_REBOOT_MS &&
+                       millis() - resetButtonsHeldSince < HOLD_REBOOT_MS + 250 &&
+                       !rebootVibrationStarted) {
+                vibrateFor(250);
+                rebootVibrationStarted = true;
+            }
         }
-        resetVibrationStarted = false;
-        rebootVibrationStarted = false;
+    } else {
+        if (resetButtonsHeldSince != 0) {
+            if (millis() - resetButtonsHeldSince >= HOLD_RESET_MS) {
+                Serial.println("Factory reset triggered by long button hold");
+                wifiCredentialsClear();
+                deleteStoredBiases();
+                rp2040.reboot();
+            } else if (millis() - resetButtonsHeldSince >= HOLD_REBOOT_MS) {
+                rp2040.reboot();
+            } else {
+                resetButtonsHeldSince = 0;
+                resetVibrationStarted = false;
+                rebootVibrationStarted = false;
+            }
+        }
+        if (rezeroButtonHeldSince != 0) {
+            if (sendRezeroCommand()) {
+                pulseVibration(150, 0, 1);
+                flashLedRing(255, 0, 255, 1000);
+                Serial.println("Rezero command sent successfully");
+            }
+            rezeroButtonHeldSince = 0;
+        }
     }
 }
 
@@ -77,15 +88,15 @@ void handleModeSwitch() {
         currentModeSwitchState = newState;
         Serial.print("Mode switch state changed to: ");
         switch (currentModeSwitchState) {
-            case MODE_SWITCH_HIT:
-                Serial.println("HIT");
-                break;
-            case MODE_SWITCH_BOTH:
-                Serial.println("BOTH");
-                break;
-            case MODE_SWITCH_MAP:
-                Serial.println("MAP");
-                break;
+        case MODE_SWITCH_HIT:
+            Serial.println("HIT");
+            break;
+        case MODE_SWITCH_BOTH:
+            Serial.println("BOTH");
+            break;
+        case MODE_SWITCH_MAP:
+            Serial.println("MAP");
+            break;
         }
         sendModeSwitchState(static_cast<uint8_t>(currentModeSwitchState));
     }
